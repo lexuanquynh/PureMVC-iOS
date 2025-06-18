@@ -15,20 +15,9 @@ class ViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         
-        // Initialize PureMVC
-//        pureMVC.initializeFacade()
-        
         // Set delegate to receive callbacks
         pureMVC.delegate = self
-        
-        // Test login
-//        testLogin()
     }
-    
-//    func testLogin() {
-//        // Simulate login button press
-//        pureMVC.onLoginButtonPressed("admin", password: "123456")
-//    }
     
     @IBAction func loginButtonTapped(_ sender: UIButton) {
         // Get username and password from UI

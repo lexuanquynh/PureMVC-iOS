@@ -20,7 +20,7 @@ UserProxy::UserProxy() : Proxy(NAME) {
         
         // Initialize network manager with configuration
         RequestConfig config;
-        config.baseUrl = "chat.codetoanbug.com";
+        config.baseUrl = "sample.com";
         config.port = 443;
         config.useSSL = true;
         config.verifySSL = false;
