@@ -15,11 +15,13 @@ Domain/
   UseCases/       application business rules (LoginUseCase)
 Infrastructure/
   Http/           HttpTypes, IHttpClient (hides httplib), HttpError mapping,
-                  HttplibHttpClient (concrete client over cpp-httplib)
+                  HttplibHttpClient (concrete client over cpp-httplib; TLS
+                  verification + SPKI pinning under CPPHTTPLIB_OPENSSL_SUPPORT)
   Concurrency/    ThreadExecutor (IExecutor over std::thread)
   Auth/           AuthRepository (implements IAuthRepository via IHttpClient + JSON)
   Security/       ISecureStorage, SecureTokenStore (ITokenStore logic),
-                  KeychainSecureStore (iOS Keychain adapter — .mm, iOS target only)
+                  KeychainSecureStore (iOS Keychain adapter — .mm, iOS target only),
+                  CertificatePinner, Base64 (pin policy + encoding)
 tests/
   Mocks/          in-memory fakes (FakeAuthRepository, FakeTokenStore,
                   FakeHttpClient, SyncExecutor)
@@ -56,7 +58,11 @@ network.
   (iOS only). 19 host tests, including end-to-end against a local httplib server.
 - **#10** — Keychain-backed token storage: `ISecureStorage` port,
   `SecureTokenStore` (host-tested logic), `KeychainSecureStore` (iOS Keychain
-  adapter, `.mm`). 24 host tests.
+  adapter, `.mm`).
+- **#12** — TLS hardening: secure-by-default `HttpClientConfig` (verification on),
+  `CertificatePinner` + `base64Encode` (host-tested), and SPKI public-key pinning
+  wired into the `HttplibHttpClient` SSL path via `set_server_certificate_verifier`
+  (compiled against httplib 0.21.0 + OpenSSL). 31 host tests.
 
 Next: wire `AuthRepository` + `HttplibHttpClient` + `SecureTokenStore` into
-`UserProxy` / `LoginCommand`; enable SSL verify + cert pinning; CI.
+`UserProxy` / `LoginCommand` (removing the legacy `verifySSL=false` path); CI.

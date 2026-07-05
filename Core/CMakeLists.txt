@@ -20,10 +20,12 @@ FetchContent_MakeAvailable(nlohmann_json)
 # cpp-httplib — header-only. Backs the concrete HTTP client (and, in tests,
 # stands up a local server). Plain HTTP on host; SSL is enabled only in the iOS
 # target via CPPHTTPLIB_OPENSSL_SUPPORT.
+# Match the version vendored in the iOS app (PureMVC/Libs/httplib.h == 0.21.0)
+# so the SSL / certificate-pinning code paths compile against the same API here.
 FetchContent_Declare(
     httplib
     GIT_REPOSITORY https://github.com/yhirose/cpp-httplib.git
-    GIT_TAG        v0.15.3
+    GIT_TAG        v0.21.0
 )
 FetchContent_MakeAvailable(httplib)
 
@@ -71,6 +73,9 @@ if(PUREMVC_CORE_BUILD_TESTS)
         tests/ExecutorTests.cpp
         tests/HttplibHttpClientTests.cpp
         tests/SecureTokenStoreTests.cpp
+        tests/Base64Tests.cpp
+        tests/CertificatePinnerTests.cpp
+        tests/HttpClientConfigTests.cpp
     )
     target_include_directories(core_tests PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}        # for "Domain/..."

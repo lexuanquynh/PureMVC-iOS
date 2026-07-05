@@ -12,8 +12,35 @@
 #include <utility>
 #include <httplib.h>
 
+#include "Infrastructure/Security/Base64.hpp"
+#include "Infrastructure/Security/CertificatePinner.hpp"
+
+#ifdef CPPHTTPLIB_OPENSSL_SUPPORT
+#include <openssl/ssl.h>
+#include <openssl/x509.h>
+#include <openssl/sha.h>
+#include <openssl/crypto.h>
+#endif
+
 namespace core {
 namespace {
+
+#ifdef CPPHTTPLIB_OPENSSL_SUPPORT
+// base64(SHA-256(SubjectPublicKeyInfo DER)) for the given certificate, or "" on
+// failure. This is the value compared against the configured pins.
+std::string computeSpkiSha256Base64(X509* cert) {
+    X509_PUBKEY* pubkey = X509_get_X509_PUBKEY(cert); // internal pointer, do not free
+    unsigned char* der = nullptr;
+    int len = i2d_X509_PUBKEY(pubkey, &der);
+    if (len <= 0 || der == nullptr) {
+        return std::string();
+    }
+    unsigned char hash[SHA256_DIGEST_LENGTH];
+    SHA256(der, static_cast<size_t>(len), hash);
+    OPENSSL_free(der);
+    return base64Encode(hash, SHA256_DIGEST_LENGTH);
+}
+#endif
 
 httplib::Headers mergeHeaders(const std::map<std::string, std::string>& defaults,
                               const HttpRequest& request) {
@@ -89,6 +116,28 @@ HttpResponse perform(const HttpClientConfig& config, const HttpRequest& request)
     if (config.useSSL) {
         httplib::SSLClient client(config.host, config.port);
         client.enable_server_certificate_verification(config.verifySSL);
+        if (!config.caCertPath.empty()) {
+            client.set_ca_cert_path(config.caCertPath);
+        }
+
+        CertificatePinner pinner(config.pinnedSpkiSha256Base64);
+        if (pinner.enabled()) {
+            client.set_server_certificate_verifier(
+                [pinner](SSL* ssl) -> httplib::SSLVerifierResponse {
+                    X509* cert = SSL_get1_peer_certificate(ssl);
+                    if (cert == nullptr) {
+                        return httplib::SSLVerifierResponse::CertificateRejected;
+                    }
+                    const std::string pin = computeSpkiSha256Base64(cert);
+                    X509_free(cert);
+                    if (pin.empty() || !pinner.isTrusted(pin)) {
+                        return httplib::SSLVerifierResponse::CertificateRejected;
+                    }
+                    // Pin matches; defer to the built-in chain/host verifier.
+                    return httplib::SSLVerifierResponse::NoDecisionMade;
+                });
+        }
+
         configure(client, config);
         return dispatch(client, request, headers);
     }
