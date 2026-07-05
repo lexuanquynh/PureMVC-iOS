@@ -12,24 +12,20 @@ let package = Package(
     ],
     products: [
         .library(name: "PureMVCCoreCxx", targets: ["PureMVCCoreCxx"]),
+        .library(name: "PureMVCBridge", targets: ["PureMVCBridge"]),
     ],
     dependencies: [
         .package(url: "https://github.com/krzyzanowskim/OpenSSL-Package.git", from: "3.3.3001"),
     ],
     targets: [
-        // Domain + Infrastructure (C++). Third-party single headers are vendored
-        // under Core/ThirdParty so the package is self-contained. The ObjC++
-        // bridge (KeychainSecureStore.mm) is excluded here — it belongs to a
-        // separate bridge target added when wiring the app.
+        // Domain + Infrastructure (pure C++). Third-party single headers are
+        // vendored under Core/ThirdParty so the package is self-contained.
         .target(
             name: "PureMVCCoreCxx",
             dependencies: [
                 .product(name: "OpenSSL", package: "OpenSSL-Package"),
             ],
             path: "Core",
-            exclude: [
-                "Infrastructure/Security/KeychainSecureStore.mm",
-            ],
             sources: [
                 "Domain",
                 "Infrastructure",
@@ -41,6 +37,28 @@ let package = Package(
                 .headerSearchPath("ThirdParty/httplib"),
                 .define("CPPHTTPLIB_OPENSSL_SUPPORT"),
             ]
+        ),
+
+        // Objective-C++ bridge: the Swift-facing surface. Public headers stay
+        // pure Objective-C so Swift can import the module directly.
+        .target(
+            name: "PureMVCBridge",
+            dependencies: ["PureMVCCoreCxx"],
+            path: "Bridge",
+            publicHeadersPath: "include",
+            cxxSettings: [
+                .headerSearchPath("."),
+            ],
+            linkerSettings: [
+                .linkedFramework("Foundation"),
+                .linkedFramework("Security"),
+            ]
+        ),
+
+        // Swift smoke test: proves Swift -> ObjC++ -> C++ links end to end.
+        .testTarget(
+            name: "PureMVCBridgeTests",
+            dependencies: ["PureMVCBridge"]
         ),
     ],
     cxxLanguageStandard: .gnucxx14
