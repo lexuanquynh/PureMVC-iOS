@@ -14,7 +14,8 @@ Domain/
                   (IAuthRepository, ITokenStore, IExecutor)
   UseCases/       application business rules (LoginUseCase)
 Infrastructure/
-  Http/           HttpTypes, IHttpClient (hides httplib), HttpError mapping
+  Http/           HttpTypes, IHttpClient (hides httplib), HttpError mapping,
+                  HttplibHttpClient (concrete client over cpp-httplib)
   Concurrency/    ThreadExecutor (IExecutor over std::thread)
   Auth/           AuthRepository (implements IAuthRepository via IHttpClient + JSON)
 tests/
@@ -36,8 +37,10 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-GoogleTest and nlohmann/json are fetched automatically via CMake `FetchContent`
-(needs network on first configure).
+GoogleTest, nlohmann/json and cpp-httplib are fetched automatically via CMake
+`FetchContent` (needs network on first configure). The `HttplibHttpClient` tests
+run a real httplib server on `127.0.0.1` — still no simulator and no external
+network.
 
 ## Status
 
@@ -45,9 +48,10 @@ GoogleTest and nlohmann/json are fetched automatically via CMake `FetchContent`
   token persistence via `ITokenStore`.
 - **#4** — `IHttpClient` / `IExecutor` ports; `AuthRepository` builds the login
   request and maps success/HTTP-error/transport-error/malformed-JSON responses
-  into domain types; `ThreadExecutor`. 14 host tests, no simulator or real
-  network.
+  into domain types; `ThreadExecutor`.
+- **#8** — `HttplibHttpClient`: concrete `IHttpClient` over cpp-httplib, running
+  through an injected `IExecutor`; SSL guarded behind `CPPHTTPLIB_OPENSSL_SUPPORT`
+  (iOS only). 19 host tests, including end-to-end against a local httplib server.
 
-Next: `HttplibHttpClient` (concrete httplib+OpenSSL binding, iOS target only);
-Keychain-backed `ITokenStore` + SSL verify + cert pinning; wire `LoginCommand`
-/ `UserProxy` to the use case; CI.
+Next: wire `AuthRepository` + `HttplibHttpClient` into `UserProxy` / `LoginCommand`;
+Keychain-backed `ITokenStore` + SSL verify + cert pinning; CI.
