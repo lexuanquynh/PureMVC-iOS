@@ -8,13 +8,19 @@ milliseconds, without a simulator, and can be reused as a base across projects.
 
 ```
 Domain/
-  Entities/     value objects (User, Token)
-  AuthTypes.hpp shared domain types (LoginCredentials, AuthSession, DomainError)
-  Ports/        interfaces the domain depends on (IAuthRepository, ITokenStore)
-  UseCases/     application business rules (LoginUseCase)
+  Entities/       value objects (User, Token)
+  AuthTypes.hpp   shared domain types (LoginCredentials, AuthSession, DomainError)
+  Ports/          interfaces the inner layers depend on
+                  (IAuthRepository, ITokenStore, IExecutor)
+  UseCases/       application business rules (LoginUseCase)
+Infrastructure/
+  Http/           HttpTypes, IHttpClient (hides httplib), HttpError mapping
+  Concurrency/    ThreadExecutor (IExecutor over std::thread)
+  Auth/           AuthRepository (implements IAuthRepository via IHttpClient + JSON)
 tests/
-  Mocks/        in-memory fakes implementing the ports
-  *Tests.cpp    GoogleTest suites
+  Mocks/          in-memory fakes (FakeAuthRepository, FakeTokenStore,
+                  FakeHttpClient, SyncExecutor)
+  *Tests.cpp      GoogleTest suites
 ```
 
 Dependency rule: everything points **inward**. Use cases depend only on ports;
@@ -30,15 +36,18 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-GoogleTest is fetched automatically via CMake `FetchContent` (needs network on
-first configure).
+GoogleTest and nlohmann/json are fetched automatically via CMake `FetchContent`
+(needs network on first configure).
 
 ## Status
 
-First vertical slice (issue #1): `LoginUseCase` — input validation, delegation
-to `IAuthRepository`, token persistence via `ITokenStore` on success. Proves the
-core is testable off-device.
+- **#1** — `LoginUseCase`: input validation, delegation to `IAuthRepository`,
+  token persistence via `ITokenStore`.
+- **#4** — `IHttpClient` / `IExecutor` ports; `AuthRepository` builds the login
+  request and maps success/HTTP-error/transport-error/malformed-JSON responses
+  into domain types; `ThreadExecutor`. 14 host tests, no simulator or real
+  network.
 
-Next: extract `IHttpClient` / `IExecutor` and back these ports with real
-infrastructure over httplib; add a Keychain-backed `ITokenStore` in the iOS
-bridge; wire `LoginCommand` to call the use case.
+Next: `HttplibHttpClient` (concrete httplib+OpenSSL binding, iOS target only);
+Keychain-backed `ITokenStore` + SSL verify + cert pinning; wire `LoginCommand`
+/ `UserProxy` to the use case; CI.
