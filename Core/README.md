@@ -20,8 +20,11 @@ Infrastructure/
   Concurrency/    ThreadExecutor (IExecutor over std::thread)
   Auth/           AuthRepository (implements IAuthRepository via IHttpClient + JSON)
   Security/       ISecureStorage, SecureTokenStore (ITokenStore logic),
-                  KeychainSecureStore (iOS Keychain adapter — .mm, iOS target only),
                   CertificatePinner, Base64 (pin policy + encoding)
+ThirdParty/       vendored single headers (nlohmann/json, httplib) for the SPM build
+
+../Bridge/        Objective-C++ bridge (SPM target PureMVCBridge):
+                  KeychainSecureStore (iOS Keychain adapter), PMVCKeychainTokenStore
 tests/
   Mocks/          in-memory fakes (FakeAuthRepository, FakeTokenStore,
                   FakeHttpClient, SyncExecutor)

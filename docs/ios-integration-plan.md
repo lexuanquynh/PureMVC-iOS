@@ -65,12 +65,14 @@ stay as the fast pure-C++ unit-test loop; SPM is the consumption path.
 - **Verification:** `swift build` compiles all four C++ sources against OpenSSL on
   the host; `ctest` in `Core/build` stays green (31 tests).
 
-## Slice 1b — ObjC++ bridge target (next)
+## Slice 1b — ObjC++ bridge target ✅ (done)
 
-Add a second package target `PureMVCBridge` (Objective-C++) that depends on
-`PureMVCCoreCxx` and contains `KeychainSecureStore.mm` plus the Swift-facing
-wrapper. Its public headers stay pure Objective-C so Swift can import it. This is
-the package's public product the app links against.
+`PureMVCBridge` (Objective-C++) depends on `PureMVCCoreCxx`, links Security +
+Foundation, and holds the platform adapter `KeychainSecureStore` (moved into
+`Bridge/`) plus `PMVCKeychainTokenStore` — a pure-ObjC class (Swift-importable)
+wrapping `SecureTokenStore(KeychainSecureStore)`. A Swift smoke test (`swift test`)
+imports the module and constructs the store, proving Swift → ObjC++ → C++ links.
+Its public headers stay pure Objective-C so Swift imports the module directly.
 
 ## Slice 2 — wire login through Core (behavior-preserving)
 

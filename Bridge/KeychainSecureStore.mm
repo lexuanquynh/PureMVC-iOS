@@ -1,16 +1,16 @@
 //
 //  KeychainSecureStore.mm
-//  PureMVC Core — Infrastructure (iOS/Apple only)
+//  PureMVCBridge — platform adapter (iOS/Apple)
 //
-//  Objective-C++ implementation of ISecureStorage over the iOS Keychain.
-//  Add this file to the app target (links Security.framework). It is not part
-//  of the host CMake build.
+//  Objective-C++ implementation of core::ISecureStorage over the iOS Keychain.
+//  Part of the PureMVCBridge target (links Security.framework); not built by the
+//  host CMake unit-test build.
 //
 
 #import <Foundation/Foundation.h>
 #import <Security/Security.h>
 
-#include "Infrastructure/Security/KeychainSecureStore.hpp"
+#include "KeychainSecureStore.hpp"
 
 #include <utility>
 
