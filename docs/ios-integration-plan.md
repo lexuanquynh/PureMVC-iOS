@@ -18,26 +18,17 @@ insecure `verifySSL = false` configuration.
 
 ---
 
-## ⚠️ Decision point 0 — OpenSSL for iOS (blocker)
+## ✅ Decision point 0 — OpenSSL for iOS (RESOLVED)
 
-`PureMVC/Network/NetworkManager.h` already does `#define CPPHTTPLIB_OPENSSL_SUPPORT`
-and uses `httplib::SSLClient`, **but there is no OpenSSL anywhere in the repo**
-(`OTHER_LDFLAGS` is empty, no `libssl`/`libcrypto`, no OpenSSL xcframework). So
-either the app does not currently link/exercise the TLS path, or OpenSSL is
-provided outside version control.
+OpenSSL is **already provided via Swift Package Manager**: the app depends on
+[`krzyzanowskim/OpenSSL-Package`](https://github.com/krzyzanowskim/OpenSSL-Package)
+`3.3.3001` (see `Package.resolved`), and the `OpenSSL` product is linked into the
+app target's *Frameworks* build phase (`project.pbxproj`). `NetworkManager` already
+compiles the `httplib::SSLClient` path (`CPPHTTPLIB_OPENSSL_SUPPORT`) against it.
 
-TLS verification + certificate pinning **cannot work without OpenSSL for iOS.**
-We must pick one before integration:
-
-| Option | What | Trade-off |
-|---|---|---|
-| **A. Prebuilt OpenSSL xcframework** (recommended) | Add an `OpenSSL.xcframework` (e.g. `krzyzanowskim/OpenSSL` via SwiftPM, or `OpenSSL-Universal`) | Fast, maintained; adds a dependency |
-| B. Build OpenSSL from source for iOS | Own build scripts | Full control; heavy to set up/maintain |
-| C. Drop OpenSSL, use httplib without SSL | Not acceptable | No HTTPS — rejected |
-
-**Needed from you:** confirm Option A (and which package), or state how OpenSSL is
-already provided. Everything below assumes an `OpenSSL.xcframework` is available to
-the app target.
+So there is **no OpenSSL prerequisite** — Core's `HttplibHttpClient.cpp` will resolve
+`<openssl/...>` and link the same way `NetworkManager.cpp` does today. This removes
+the biggest integration risk.
 
 ---
 
@@ -72,7 +63,8 @@ verified when it first compiles in the app target.
 - `GCC_PREPROCESSOR_DEFINITIONS`: add `CPPHTTPLIB_OPENSSL_SUPPORT` **project-wide**
   so Core's `HttplibHttpClient.cpp` compiles the same SSL path as `NetworkManager`
   (avoids one TU seeing SSL and another not)
-- Link `OpenSSL.xcframework` (from Decision 0) to the app target
+- OpenSSL is **already linked** via the SPM `OpenSSL` product (Decision 0) — nothing
+  to add; Core's SSL translation unit uses the same headers/libs as `NetworkManager`
 - Add the **Keychain Sharing** capability only if cross-app sharing is needed;
   basic per-app Keychain (what `KeychainSecureStore` uses) needs no entitlement on
   iOS. On device, normal code signing/provisioning applies.
@@ -137,8 +129,8 @@ GitHub Actions: (1) `cmake`/`ctest` for `Core` (fast, already green), (2)
 
 ## Risks & notes
 
-- **OpenSSL for iOS is the critical prerequisite** (Decision 0). Nothing TLS works
-  without it.
+- **OpenSSL is already available** via SPM (Decision 0), so the previous top risk
+  is gone; the remaining risk is mostly Xcode project wiring.
 - **`project.pbxproj` edits are error-prone.** Prefer doing the file-adds and
   build-setting changes in the Xcode UI (or a careful scripted edit) and committing
   the result, rather than hand-editing the pbxproj blind.
@@ -154,8 +146,7 @@ GitHub Actions: (1) `cmake`/`ctest` for `Core` (fast, already green), (2)
 
 ## Suggested issue breakdown
 
-1. OpenSSL.xcframework for the app target (Decision 0)
-2. Slice 1 — Core compiles in the app target
-3. Slice 2 — login routed through Core
-4. Slice 3 — remove legacy path + enable pinning
-5. Slice 4 — CI (optional)
+1. Slice 1 — Core compiles in the app target (OpenSSL already linked via SPM)
+2. Slice 2 — login routed through Core
+3. Slice 3 — remove legacy path + enable pinning
+4. Slice 4 — CI (optional)
