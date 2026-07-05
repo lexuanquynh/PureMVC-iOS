@@ -74,10 +74,17 @@ wrapping `SecureTokenStore(KeychainSecureStore)`. A Swift smoke test (`swift tes
 imports the module and constructs the store, proving Swift → ObjC++ → C++ links.
 Its public headers stay pure Objective-C so Swift imports the module directly.
 
-## Slice 2 — wire login through Core (behavior-preserving)
+## Slice 2 — wire login through Core (behavior-preserving) ✅ (done)
 
-Add the package to the app (one **local package dependency** in Xcode — far smaller
-than per-file `project.pbxproj` edits) and link `PureMVCBridge`.
+Done: a local Swift Package reference (`XCLocalSwiftPackageReference "."`) was added
+to `project.pbxproj` and the `PureMVCBridge` product linked to the app target.
+`LoginCommand` now routes through `PMVCAuthClient` (Core stack) and sends the same
+`LOGIN_SUCCESS` / `LOGIN_FAILED` notifications. Public bridge headers were moved to
+`Bridge/include/PureMVCBridge/` so `#import <PureMVCBridge/…>` resolves from the
+app's ObjC++. Verified: **app builds for the arm64 simulator**; `swift build` /
+`swift test` / `ctest` green. The interactive login-tap round-trip is left to manual
+/ UI-test verification. Note: `logout` still uses the legacy `UserProxy` path —
+cleaned up in Slice 3.
 
 Build the object graph once (e.g. a small ObjC++ composition owned by
 `PureMVCWrapper` or `UserProxy`), with lifetimes that outlive async calls:
