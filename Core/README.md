@@ -18,6 +18,8 @@ Infrastructure/
                   HttplibHttpClient (concrete client over cpp-httplib)
   Concurrency/    ThreadExecutor (IExecutor over std::thread)
   Auth/           AuthRepository (implements IAuthRepository via IHttpClient + JSON)
+  Security/       ISecureStorage, SecureTokenStore (ITokenStore logic),
+                  KeychainSecureStore (iOS Keychain adapter — .mm, iOS target only)
 tests/
   Mocks/          in-memory fakes (FakeAuthRepository, FakeTokenStore,
                   FakeHttpClient, SyncExecutor)
@@ -52,6 +54,9 @@ network.
 - **#8** — `HttplibHttpClient`: concrete `IHttpClient` over cpp-httplib, running
   through an injected `IExecutor`; SSL guarded behind `CPPHTTPLIB_OPENSSL_SUPPORT`
   (iOS only). 19 host tests, including end-to-end against a local httplib server.
+- **#10** — Keychain-backed token storage: `ISecureStorage` port,
+  `SecureTokenStore` (host-tested logic), `KeychainSecureStore` (iOS Keychain
+  adapter, `.mm`). 24 host tests.
 
-Next: wire `AuthRepository` + `HttplibHttpClient` into `UserProxy` / `LoginCommand`;
-Keychain-backed `ITokenStore` + SSL verify + cert pinning; CI.
+Next: wire `AuthRepository` + `HttplibHttpClient` + `SecureTokenStore` into
+`UserProxy` / `LoginCommand`; enable SSL verify + cert pinning; CI.
