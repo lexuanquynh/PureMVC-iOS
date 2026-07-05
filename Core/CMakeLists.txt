@@ -17,6 +17,16 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
+# cpp-httplib — header-only. Backs the concrete HTTP client (and, in tests,
+# stands up a local server). Plain HTTP on host; SSL is enabled only in the iOS
+# target via CPPHTTPLIB_OPENSSL_SUPPORT.
+FetchContent_Declare(
+    httplib
+    GIT_REPOSITORY https://github.com/yhirose/cpp-httplib.git
+    GIT_TAG        v0.15.3
+)
+FetchContent_MakeAvailable(httplib)
+
 # ----------------------------------------------------------------------------
 # Core library — domain + infrastructure. Domain code has zero third-party deps;
 # infrastructure may use libraries (linked PRIVATE).
@@ -24,9 +34,13 @@ FetchContent_MakeAvailable(nlohmann_json)
 add_library(puremvc_core
     Domain/UseCases/LoginUseCase.cpp
     Infrastructure/Auth/AuthRepository.cpp
+    Infrastructure/Http/HttplibHttpClient.cpp
 )
 target_include_directories(puremvc_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(puremvc_core PRIVATE nlohmann_json::nlohmann_json)
+target_link_libraries(puremvc_core PRIVATE
+    nlohmann_json::nlohmann_json
+    httplib::httplib
+)
 
 # ----------------------------------------------------------------------------
 # Tests (host-only). Enable with -DPUREMVC_CORE_BUILD_TESTS=ON (default ON when
@@ -51,6 +65,7 @@ if(PUREMVC_CORE_BUILD_TESTS)
         tests/LoginUseCaseTests.cpp
         tests/AuthRepositoryTests.cpp
         tests/ExecutorTests.cpp
+        tests/HttplibHttpClientTests.cpp
     )
     target_include_directories(core_tests PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}        # for "Domain/..."
@@ -60,6 +75,7 @@ if(PUREMVC_CORE_BUILD_TESTS)
         puremvc_core
         GTest::gtest_main
         nlohmann_json::nlohmann_json
+        httplib::httplib
     )
 
     include(GoogleTest)
