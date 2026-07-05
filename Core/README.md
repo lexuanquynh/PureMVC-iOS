@@ -46,6 +46,20 @@ GoogleTest, nlohmann/json and cpp-httplib are fetched automatically via CMake
 run a real httplib server on `127.0.0.1` — still no simulator and no external
 network.
 
+## Consuming from apps (Swift Package)
+
+The repo root has a `Package.swift` exposing this Core as a local Swift Package
+(`PureMVCCoreCxx`), so apps can depend on it as a module instead of copying files.
+Its third-party headers are vendored under `Core/ThirdParty/`, and OpenSSL comes
+from `krzyzanowskim/OpenSSL-Package`. Build it with:
+
+```sh
+swift build
+```
+
+CMake/GoogleTest remains the fast unit-test loop for pure C++; SPM is the
+consumption path for the iOS app and other projects.
+
 ## Status
 
 - **#1** — `LoginUseCase`: input validation, delegation to `IAuthRepository`,

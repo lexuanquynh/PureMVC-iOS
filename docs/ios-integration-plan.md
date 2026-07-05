@@ -46,40 +46,36 @@ verified when it first compiles in the app target.
 
 ---
 
-## Slice 1 — make `Core` compile in the app target (no behavior change)
+## Approach: local Swift Package (chosen)
 
-**Add sources** to the app target's *Compile Sources* build phase:
-- `Core/Domain/UseCases/LoginUseCase.cpp`
-- `Core/Infrastructure/Auth/AuthRepository.cpp`
-- `Core/Infrastructure/Http/HttplibHttpClient.cpp`
-- `Core/Infrastructure/Security/SecureTokenStore.cpp`
-- `Core/Infrastructure/Security/KeychainSecureStore.mm`
-(headers resolve via search paths)
+Instead of adding loose `Core/*.cpp` files to the app target, `Core` is packaged
+as a **local Swift Package** (`Package.swift` at the repo root). This gives a hard,
+compiler-enforced module boundary and makes the core reusable across projects — the
+app depends on the package rather than reaching into its files. CMake + GoogleTest
+stay as the fast pure-C++ unit-test loop; SPM is the consumption path.
 
-**Build settings (Debug + Release):**
-- `HEADER_SEARCH_PATHS`: add
-  - `$(PROJECT_DIR)/Core` — Core uses root-relative includes (`Domain/...`, `Infrastructure/...`)
-  - `$(PROJECT_DIR)/PureMVC/Libs` — so Core's `#include <httplib.h>` resolves (httplib.h lives in `Libs/`, 0.21.0 — matches the host build)
-- `GCC_PREPROCESSOR_DEFINITIONS`: add `CPPHTTPLIB_OPENSSL_SUPPORT` **project-wide**
-  so Core's `HttplibHttpClient.cpp` compiles the same SSL path as `NetworkManager`
-  (avoids one TU seeing SSL and another not)
-- OpenSSL is **already linked** via the SPM `OpenSSL` product (Decision 0) — nothing
-  to add; Core's SSL translation unit uses the same headers/libs as `NetworkManager`
-- Add the **Keychain Sharing** capability only if cross-app sharing is needed;
-  basic per-app Keychain (what `KeychainSecureStore` uses) needs no entitlement on
-  iOS. On device, normal code signing/provisioning applies.
+## Slice 1 — package Core as a Swift Package ✅ (done, no behavior change)
 
-**nlohmann/json path.** Core includes `<nlohmann/json.hpp>`, but the vendored
-header is `PureMVC/Libs/json/json.hpp` (no `nlohmann/` prefix). Fix by placing the
-single header at `PureMVC/Libs/nlohmann/json.hpp` (copy of the vendored one) so
-`<nlohmann/json.hpp>` resolves via the `Libs` search path added above. Keeps the
-include identical to the host build.
+- Vendor httplib + nlohmann/json single headers under `Core/ThirdParty/` so the
+  package is self-contained (SPM has no FetchContent equivalent).
+- `Package.swift` → C++ library target `PureMVCCoreCxx` (sources: `Domain`,
+  `Infrastructure`), depending on `krzyzanowskim/OpenSSL-Package`, with
+  `CPPHTTPLIB_OPENSSL_SUPPORT` and header search paths for the target root +
+  `ThirdParty`. The ObjC++ bridge (`KeychainSecureStore.mm`) is excluded here.
+- **Verification:** `swift build` compiles all four C++ sources against OpenSSL on
+  the host; `ctest` in `Core/build` stays green (31 tests).
 
-**Verification:** app builds for the simulator with Core linked but not yet used
-(reference one symbol, e.g. construct a `core::HttpClientConfig`, to force linkage).
-No functional change. `xcodebuild ... build`.
+## Slice 1b — ObjC++ bridge target (next)
+
+Add a second package target `PureMVCBridge` (Objective-C++) that depends on
+`PureMVCCoreCxx` and contains `KeychainSecureStore.mm` plus the Swift-facing
+wrapper. Its public headers stay pure Objective-C so Swift can import it. This is
+the package's public product the app links against.
 
 ## Slice 2 — wire login through Core (behavior-preserving)
+
+Add the package to the app (one **local package dependency** in Xcode — far smaller
+than per-file `project.pbxproj` edits) and link `PureMVCBridge`.
 
 Build the object graph once (e.g. a small ObjC++ composition owned by
 `PureMVCWrapper` or `UserProxy`), with lifetimes that outlive async calls:
@@ -146,7 +142,8 @@ GitHub Actions: (1) `cmake`/`ctest` for `Core` (fast, already green), (2)
 
 ## Suggested issue breakdown
 
-1. Slice 1 — Core compiles in the app target (OpenSSL already linked via SPM)
-2. Slice 2 — login routed through Core
-3. Slice 3 — remove legacy path + enable pinning
-4. Slice 4 — CI (optional)
+1. Slice 1 — package Core as a Swift Package (`PureMVCCoreCxx`) ✅
+2. Slice 1b — ObjC++ bridge target (`PureMVCBridge`)
+3. Slice 2 — app consumes the package; login routed through Core
+4. Slice 3 — remove legacy path + enable pinning
+5. Slice 4 — CI (optional)
