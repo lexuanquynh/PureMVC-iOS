@@ -5,7 +5,7 @@
 //  ObjC++ implementation: bridges the pure-ObjC API to the C++ Core.
 //
 
-#import "PMVCKeychainTokenStore.h"
+#import "PureMVCBridge/PMVCKeychainTokenStore.h"
 
 #include "KeychainSecureStore.hpp"
 #include "Infrastructure/Security/SecureTokenStore.hpp"

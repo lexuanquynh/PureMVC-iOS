@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		0B448FEB2E023B5000219497 /* OpenSSL in Frameworks */ = {isa = PBXBuildFile; productRef = 0B448FEA2E023B5000219497 /* OpenSSL */; };
+		C0DE000000000000000000A3 /* PureMVCBridge in Frameworks */ = {isa = PBXBuildFile; productRef = C0DE000000000000000000A2 /* PureMVCBridge */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -70,6 +71,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				0B448FEB2E023B5000219497 /* OpenSSL in Frameworks */,
+				C0DE000000000000000000A3 /* PureMVCBridge in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -131,6 +133,7 @@
 			name = PureMVC;
 			packageProductDependencies = (
 				0B448FEA2E023B5000219497 /* OpenSSL */,
+				C0DE000000000000000000A2 /* PureMVCBridge */,
 			);
 			productName = PureMVC;
 			productReference = 0B448EEC2E016E3700219497 /* PureMVC.app */;
@@ -217,6 +220,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				0B448FE92E023B5000219497 /* XCRemoteSwiftPackageReference "OpenSSL-Package" */,
+				C0DE000000000000000000A1 /* XCLocalSwiftPackageReference "." */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 0B448EED2E016E3700219497 /* Products */;
@@ -613,6 +617,13 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		C0DE000000000000000000A1 /* XCLocalSwiftPackageReference "." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = .;
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCRemoteSwiftPackageReference section */
 		0B448FE92E023B5000219497 /* XCRemoteSwiftPackageReference "OpenSSL-Package" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -629,6 +640,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 0B448FE92E023B5000219497 /* XCRemoteSwiftPackageReference "OpenSSL-Package" */;
 			productName = OpenSSL;
+		};
+		C0DE000000000000000000A2 /* PureMVCBridge */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C0DE000000000000000000A1 /* XCLocalSwiftPackageReference "." */;
+			productName = PureMVCBridge;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

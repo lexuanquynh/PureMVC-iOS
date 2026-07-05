@@ -5,7 +5,7 @@
 //  Composes the C++ Core auth stack and marshals between ObjC and C++.
 //
 
-#import "PMVCAuthClient.h"
+#import "PureMVCBridge/PMVCAuthClient.h"
 
 #include "KeychainSecureStore.hpp"
 #include "Infrastructure/Http/HttpClientConfig.hpp"
