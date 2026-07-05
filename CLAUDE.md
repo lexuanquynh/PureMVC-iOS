@@ -2,6 +2,16 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Contribution workflow (required)
+
+For any task that changes the repo, follow this sequence — **do not push straight to `main`**:
+
+1. **Create a GitHub issue** describing the task before starting work (`gh issue create`).
+2. **Work on a branch** — never commit directly to `main`.
+3. **Run the relevant tests and only continue once they pass** — C++ core: `ctest` in `Core/build`; iOS: `xcodebuild ... test`.
+4. **Open a pull request** (`gh pr create`) linked to the issue (`Closes #<n>`). Do **not** merge yet.
+5. **Merge only after the maintainer's explicit approval.** Merging is a separate, approved step — never merge without an OK.
+
 ## What this is
 
 An iOS demo app that drives its application logic through the **PureMVC C++ multicore framework** rather than Swift. The Swift/UIKit layer is a thin shell; the real MVC (Model / Command / Notification) lives in C++ and Objective-C++, exposed to Swift through a bridging wrapper. The sample flow is login / logout / data-refresh against a REST backend.
