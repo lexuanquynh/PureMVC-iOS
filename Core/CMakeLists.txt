@@ -35,7 +35,11 @@ add_library(puremvc_core
     Domain/UseCases/LoginUseCase.cpp
     Infrastructure/Auth/AuthRepository.cpp
     Infrastructure/Http/HttplibHttpClient.cpp
+    Infrastructure/Security/SecureTokenStore.cpp
 )
+# NOTE: Infrastructure/Security/KeychainSecureStore.mm is Apple-only (ObjC++ +
+# Security.framework) and is intentionally excluded here; it is compiled by the
+# iOS app target.
 target_include_directories(puremvc_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(puremvc_core PRIVATE
     nlohmann_json::nlohmann_json
@@ -66,6 +70,7 @@ if(PUREMVC_CORE_BUILD_TESTS)
         tests/AuthRepositoryTests.cpp
         tests/ExecutorTests.cpp
         tests/HttplibHttpClientTests.cpp
+        tests/SecureTokenStoreTests.cpp
     )
     target_include_directories(core_tests PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}        # for "Domain/..."
