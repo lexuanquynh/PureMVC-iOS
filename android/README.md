@@ -74,8 +74,20 @@ android/
 - The stub `IHttpClient` is swapped for `HttplibHttpClient` once native OpenSSL
   lands; the JNI/Kotlin API stays the same.
 
+**Slice 3 done** — real HTTPS via the shared `HttplibHttpClient` (+ shared cert
+pinning), backed by static OpenSSL 3.x for the NDK:
+- **Run `android/openssl/build-openssl.sh` once** (before building; also in CI) to
+  produce `android/openssl/prebuilt/<abi>/` — httplib 0.21 needs OpenSSL ≥ 3.0 and
+  Google's NDK prefab only ships 1.1.1, so we build 3.x from source (output is
+  gitignored).
+- `app/src/main/cpp/CMakeLists.txt` links that static OpenSSL and builds Core with
+  `PUREMVC_CORE_WITH_HTTPLIB=ON`; `AndroidAuthClient` now uses the real client
+  (`nativeCreate(host, port)`).
+- Verified on emulator: `connectedDebugAndroidTest` 6/6 (validation + real TLS
+  transport failure to an unreachable host).
+
 ### Next slices
-1. Native OpenSSL/BoringSSL for the NDK → flip `PUREMVC_CORE_WITH_HTTPLIB=ON`
-   (enables `HttplibHttpClient` + shared cert pinning); or an OkHttp `IHttpClient`.
-2. Build the PureMVC C++ framework from source for the NDK.
-3. Android `ISecureStorage` (Keystore + EncryptedSharedPreferences).
+1. Build the PureMVC C++ framework from source for the NDK.
+2. Android `ISecureStorage` (Keystore + EncryptedSharedPreferences) to replace the
+   in-memory token store.
+3. Point at a real backend and add SPKI pins in `jni_bridge.cpp`.

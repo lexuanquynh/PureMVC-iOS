@@ -34,16 +34,23 @@ target_include_directories(puremvc_core
 )
 
 if(PUREMVC_CORE_WITH_HTTPLIB)
-    # cpp-httplib provides its OpenSSL detection/linkage on the host.
-    include(FetchContent)
-    FetchContent_Declare(
-        httplib
-        GIT_REPOSITORY https://github.com/yhirose/cpp-httplib.git
-        GIT_TAG        v0.21.0
-    )
-    FetchContent_MakeAvailable(httplib)
     target_compile_definitions(puremvc_core PRIVATE CPPHTTPLIB_OPENSSL_SUPPORT)
-    target_link_libraries(puremvc_core PRIVATE httplib::httplib)
+    if(PUREMVC_OPENSSL_TARGETS)
+        # Caller provides OpenSSL (e.g. Android via the NDK prefab package). Use
+        # the vendored httplib header directly.
+        target_include_directories(puremvc_core PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/httplib)
+        target_link_libraries(puremvc_core PRIVATE ${PUREMVC_OPENSSL_TARGETS})
+    else()
+        # Host: cpp-httplib via FetchContent brings its own OpenSSL detection.
+        include(FetchContent)
+        FetchContent_Declare(
+            httplib
+            GIT_REPOSITORY https://github.com/yhirose/cpp-httplib.git
+            GIT_TAG        v0.21.0
+        )
+        FetchContent_MakeAvailable(httplib)
+        target_link_libraries(puremvc_core PRIVATE httplib::httplib)
+    endif()
 endif()
 
 # ----------------------------------------------------------------------------

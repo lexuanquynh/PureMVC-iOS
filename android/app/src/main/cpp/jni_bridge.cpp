@@ -2,10 +2,9 @@
 //  jni_bridge.cpp
 //  Android JNI bridge to the shared C++ Core.
 //
-//  Runs the real Core auth pipeline (LoginUseCase → AuthRepository → IHttpClient)
-//  driven from Kotlin. The HTTP client here is a stub returning a canned login
-//  response asynchronously via ThreadExecutor; it is swapped for
-//  HttplibHttpClient once native OpenSSL lands (the JNI/Kotlin API is unchanged).
+//  Runs the real Core auth pipeline (LoginUseCase → AuthRepository →
+//  HttplibHttpClient) driven from Kotlin, over real HTTPS with the shared
+//  certificate pinner (OpenSSL comes from the NDK prefab package).
 //
 
 #include <jni.h>
@@ -16,7 +15,8 @@
 #include "Domain/Ports/IAuthRepository.hpp"
 #include "Domain/Ports/ITokenStore.hpp"
 #include "Infrastructure/Auth/AuthRepository.hpp"
-#include "Infrastructure/Http/IHttpClient.hpp"
+#include "Infrastructure/Http/HttpClientConfig.hpp"
+#include "Infrastructure/Http/HttplibHttpClient.hpp"
 #include "Infrastructure/Concurrency/ThreadExecutor.hpp"
 
 using namespace core;
@@ -43,31 +43,28 @@ private:
     Token token_;
 };
 
-// Stub HTTP client: canned successful login, delivered off-thread like the real
-// one. Replaced by HttplibHttpClient when native OpenSSL is available.
-class StubHttpClient : public IHttpClient {
-public:
-    explicit StubHttpClient(IExecutor& executor) : executor_(executor) {}
-    void send(const HttpRequest& /*request*/, Callback callback) override {
-        executor_.run([callback]() {
-            HttpResponse response;
-            response.status = 200;
-            response.body =
-                R"({"access_token":"demo-access","refresh_token":"demo-refresh","is_verify":true})";
-            callback(response);
-        });
-    }
-private:
-    IExecutor& executor_;
-};
+HttpClientConfig makeConfig(const std::string& host, int port) {
+    HttpClientConfig config;
+    config.host = host;
+    config.port = port;
+    config.useSSL = true;
+    config.verifySSL = true;
+    config.connectionTimeoutSec = 5;
+    config.readTimeoutSec = 5;
+    // Add real SPKI pins here (config.pinnedSpkiSha256Base64) for a real backend.
+    return config;
+}
 
-// Native object graph mirroring iOS PMVCAuthClient (with the stub client).
+// Native object graph mirroring iOS PMVCAuthClient (real HTTPS via httplib).
 struct AndroidAuthClient {
     ThreadExecutor executor;
-    StubHttpClient http{executor};
+    HttplibHttpClient http;
     AuthRepository repository{http, "/api/v1/auth/login"};
     InMemoryTokenStore store;
     LoginUseCase login{repository, store};
+
+    AndroidAuthClient(const std::string& host, int port)
+        : http(makeConfig(host, port), executor) {}
 };
 
 // Calls back into a Kotlin AuthCallback (onResult(Boolean, String)) from an
@@ -126,8 +123,9 @@ Java_com_codetoanbug_androidpuremvc_PureMVCCore_nativeLoginValidationMessage(
 
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_codetoanbug_androidpuremvc_AndroidAuthClient_nativeCreate(
-        JNIEnv* /*env*/, jobject /*thiz*/) {
-    return reinterpret_cast<jlong>(new AndroidAuthClient());
+        JNIEnv* env, jobject /*thiz*/, jstring host, jint port) {
+    return reinterpret_cast<jlong>(
+        new AndroidAuthClient(jstringToStd(env, host), static_cast<int>(port)));
 }
 
 extern "C" JNIEXPORT void JNICALL

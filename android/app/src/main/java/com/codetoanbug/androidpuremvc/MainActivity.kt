@@ -44,7 +44,7 @@ class MainActivity : ComponentActivity() {
  */
 @Composable
 fun LoginScreen(modifier: Modifier = Modifier) {
-    val client = remember { AndroidAuthClient() }
+    val client = remember { AndroidAuthClient(host = "sample.com") }
     DisposableEffect(Unit) { onDispose { client.close() } }
 
     var email by remember { mutableStateOf("sample@gmail.com") }

@@ -124,7 +124,14 @@ HttpResponse perform(const HttpClientConfig& config, const HttpRequest& request)
         if (pinner.enabled()) {
             client.set_server_certificate_verifier(
                 [pinner](SSL* ssl) -> httplib::SSLVerifierResponse {
+                    // SSL_get1_peer_certificate is OpenSSL 3.0+; 1.1.1 (e.g. the
+                    // Android NDK prefab) uses SSL_get_peer_certificate. Both
+                    // return an owned cert that must be X509_free'd.
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
                     X509* cert = SSL_get1_peer_certificate(ssl);
+#else
+                    X509* cert = SSL_get_peer_certificate(ssl);
+#endif
                     if (cert == nullptr) {
                         return httplib::SSLVerifierResponse::CertificateRejected;
                     }
