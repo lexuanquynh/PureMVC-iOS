@@ -86,8 +86,14 @@ pinning), backed by static OpenSSL 3.x for the NDK:
 - Verified on emulator: `connectedDebugAndroidTest` 6/6 (validation + real TLS
   transport failure to an unreachable host).
 
+**Slice 4 done** — Keystore-backed token storage (counterpart of iOS Keychain):
+- `SecureStorage.kt` uses EncryptedSharedPreferences (Android Keystore); the C++
+  `JniSecureStorage` implements `core::ISecureStorage` by calling up into it via
+  JNI, and `AndroidAuthClient` composes `SecureTokenStore` over it.
+- `AndroidAuthClient(context, host, port)` — tokens persist encrypted.
+- Verified on emulator: `connectedDebugAndroidTest` 7/7 (incl. Keystore round-trip).
+
 ### Next slices
-1. Build the PureMVC C++ framework from source for the NDK.
-2. Android `ISecureStorage` (Keystore + EncryptedSharedPreferences) to replace the
-   in-memory token store.
-3. Point at a real backend and add SPKI pins in `jni_bridge.cpp`.
+1. Build the PureMVC C++ framework from source for the NDK (if using Command/Proxy
+   on Android).
+2. Point at a real backend and add SPKI pins in `jni_bridge.cpp`.
