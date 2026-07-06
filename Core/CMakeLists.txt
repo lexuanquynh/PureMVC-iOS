@@ -1,59 +1,54 @@
 cmake_minimum_required(VERSION 3.14)
 project(PureMVCCore LANGUAGES CXX)
 
-# Keep the core C++11-compatible so the same sources also build into the iOS
-# target (which uses gnu++11). Tests may rely on the host toolchain default.
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-include(FetchContent)
-
-# nlohmann/json — used by infrastructure (JSON mapping). Kept out of the
-# public headers so it stays an implementation detail.
-FetchContent_Declare(
-    nlohmann_json
-    URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
-)
-FetchContent_MakeAvailable(nlohmann_json)
-
-# cpp-httplib — header-only. Backs the concrete HTTP client (and, in tests,
-# stands up a local server). Plain HTTP on host; SSL is enabled only in the iOS
-# target via CPPHTTPLIB_OPENSSL_SUPPORT.
-# Match the version vendored in the iOS app (PureMVC/Libs/httplib.h == 0.21.0)
-# so the SSL / certificate-pinning code paths compile against the same API here.
-FetchContent_Declare(
-    httplib
-    GIT_REPOSITORY https://github.com/yhirose/cpp-httplib.git
-    GIT_TAG        v0.21.0
-)
-FetchContent_MakeAvailable(httplib)
-
-# ----------------------------------------------------------------------------
-# Core library — domain + infrastructure. Domain code has zero third-party deps;
-# infrastructure may use libraries (linked PRIVATE).
-# ----------------------------------------------------------------------------
-add_library(puremvc_core
-    Domain/UseCases/LoginUseCase.cpp
-    Infrastructure/Auth/AuthRepository.cpp
-    Infrastructure/Http/HttplibHttpClient.cpp
-    Infrastructure/Security/SecureTokenStore.cpp
-)
-# NOTE: Infrastructure/Security/KeychainSecureStore.mm is Apple-only (ObjC++ +
-# Security.framework) and is intentionally excluded here; it is compiled by the
-# iOS app target.
-target_include_directories(puremvc_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(puremvc_core PRIVATE
-    nlohmann_json::nlohmann_json
-    httplib::httplib
-)
-
-# ----------------------------------------------------------------------------
-# Tests (host-only). Enable with -DPUREMVC_CORE_BUILD_TESTS=ON (default ON when
-# this is the top-level project).
-# ----------------------------------------------------------------------------
+# Build the httplib-based HTTP client (requires OpenSSL). Turn OFF on platforms
+# that provide HTTP another way or lack native OpenSSL (e.g. first Android
+# bring-up); the rest of Core still builds.
+option(PUREMVC_CORE_WITH_HTTPLIB "Build the httplib HTTP client (needs OpenSSL)" ON)
 option(PUREMVC_CORE_BUILD_TESTS "Build PureMVC core unit tests" ${PROJECT_IS_TOP_LEVEL})
 
+# ----------------------------------------------------------------------------
+# Core library — domain + infrastructure. Domain has zero third-party deps;
+# infrastructure uses the vendored header-only libs under ThirdParty/ (so no
+# network fetch is needed — important for the Android NDK build).
+# ----------------------------------------------------------------------------
+set(PUREMVC_CORE_SOURCES
+    Domain/UseCases/LoginUseCase.cpp
+    Infrastructure/Auth/AuthRepository.cpp
+    Infrastructure/Security/SecureTokenStore.cpp
+)
+if(PUREMVC_CORE_WITH_HTTPLIB)
+    list(APPEND PUREMVC_CORE_SOURCES Infrastructure/Http/HttplibHttpClient.cpp)
+endif()
+
+# NOTE: Infrastructure/Security/KeychainSecureStore.mm is Apple-only (ObjC++ +
+# Security.framework) and is built by the iOS bridge target, not here.
+add_library(puremvc_core ${PUREMVC_CORE_SOURCES})
+target_include_directories(puremvc_core
+    PUBLIC  ${CMAKE_CURRENT_SOURCE_DIR}
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty        # nlohmann/json.hpp
+)
+
+if(PUREMVC_CORE_WITH_HTTPLIB)
+    # cpp-httplib provides its OpenSSL detection/linkage on the host.
+    include(FetchContent)
+    FetchContent_Declare(
+        httplib
+        GIT_REPOSITORY https://github.com/yhirose/cpp-httplib.git
+        GIT_TAG        v0.21.0
+    )
+    FetchContent_MakeAvailable(httplib)
+    target_compile_definitions(puremvc_core PRIVATE CPPHTTPLIB_OPENSSL_SUPPORT)
+    target_link_libraries(puremvc_core PRIVATE httplib::httplib)
+endif()
+
+# ----------------------------------------------------------------------------
+# Tests (host-only). Default ON when this is the top-level project.
+# ----------------------------------------------------------------------------
 if(PUREMVC_CORE_BUILD_TESTS)
     enable_testing()
 
@@ -63,30 +58,32 @@ if(PUREMVC_CORE_BUILD_TESTS)
         GIT_REPOSITORY https://github.com/google/googletest.git
         GIT_TAG        v1.14.0
     )
-    # Don't override the parent project's compiler/linker settings on Windows.
     set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(googletest)
 
-    add_executable(core_tests
+    set(PUREMVC_TEST_SOURCES
         tests/LoginUseCaseTests.cpp
         tests/AuthRepositoryTests.cpp
         tests/ExecutorTests.cpp
-        tests/HttplibHttpClientTests.cpp
         tests/SecureTokenStoreTests.cpp
         tests/Base64Tests.cpp
         tests/CertificatePinnerTests.cpp
         tests/HttpClientConfigTests.cpp
     )
+    if(PUREMVC_CORE_WITH_HTTPLIB)
+        list(APPEND PUREMVC_TEST_SOURCES tests/HttplibHttpClientTests.cpp)
+    endif()
+
+    add_executable(core_tests ${PUREMVC_TEST_SOURCES})
     target_include_directories(core_tests PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}        # for "Domain/..."
-        ${CMAKE_CURRENT_SOURCE_DIR}/tests  # for "Mocks/..."
+        ${CMAKE_CURRENT_SOURCE_DIR}          # for "Domain/..."
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests    # for "Mocks/..."
+        ${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty
     )
-    target_link_libraries(core_tests PRIVATE
-        puremvc_core
-        GTest::gtest_main
-        nlohmann_json::nlohmann_json
-        httplib::httplib
-    )
+    target_link_libraries(core_tests PRIVATE puremvc_core GTest::gtest_main)
+    if(PUREMVC_CORE_WITH_HTTPLIB)
+        target_link_libraries(core_tests PRIVATE httplib::httplib)
+    endif()
 
     include(GoogleTest)
     gtest_discover_tests(core_tests)
