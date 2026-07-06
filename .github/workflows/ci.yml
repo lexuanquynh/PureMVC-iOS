@@ -10,7 +10,7 @@ jobs:
     name: Core C++ (host)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install deps
         run: sudo apt-get update && sudo apt-get install -y cmake ninja-build libssl-dev
       - name: Configure
@@ -24,7 +24,7 @@ jobs:
     name: iOS package (SPM)
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: swift build
         run: swift build
       - name: swift test
@@ -36,18 +36,18 @@ jobs:
     env:
       NDK_VERSION: "29.0.13599879"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
       - name: Install NDK
         run: sdkmanager "ndk;${NDK_VERSION}"
       - name: Cache OpenSSL for NDK
         id: openssl-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: android/openssl/prebuilt
           key: openssl-3.0.15-ndk${{ env.NDK_VERSION }}-${{ hashFiles('android/openssl/build-openssl.sh') }}
