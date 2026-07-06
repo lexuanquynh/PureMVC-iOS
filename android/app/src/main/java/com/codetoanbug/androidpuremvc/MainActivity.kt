@@ -21,6 +21,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.codetoanbug.androidpuremvc.ui.theme.AndroidPureMVCTheme
@@ -44,7 +45,8 @@ class MainActivity : ComponentActivity() {
  */
 @Composable
 fun LoginScreen(modifier: Modifier = Modifier) {
-    val client = remember { AndroidAuthClient(host = "sample.com") }
+    val context = LocalContext.current
+    val client = remember { AndroidAuthClient(context = context, host = "sample.com") }
     DisposableEffect(Unit) { onDispose { client.close() } }
 
     var email by remember { mutableStateOf("sample@gmail.com") }

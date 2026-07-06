@@ -1,6 +1,7 @@
 package com.codetoanbug.androidpuremvc
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -10,19 +11,18 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 /**
- * Drives the shared Core auth pipeline (real HttplibHttpClient over OpenSSL)
- * through JNI on a device/emulator. Run with
+ * Drives the shared Core auth pipeline (real HttplibHttpClient over OpenSSL +
+ * Keystore-backed token store) through JNI on a device/emulator. Run with
  * `./gradlew :app:connectedDebugAndroidTest`.
- *
- * No external backend is assumed: we assert the offline-deterministic paths —
- * input validation (no network) and a transport failure to an unreachable host.
  */
 @RunWith(AndroidJUnit4::class)
 class AndroidAuthClientTest {
 
+    private val context = InstrumentationRegistry.getInstrumentation().targetContext
+
     @Test
     fun emptyEmailFailsValidationWithoutNetwork() {
-        val client = AndroidAuthClient(host = "10.255.255.1")
+        val client = AndroidAuthClient(context, host = "10.255.255.1")
         val latch = CountDownLatch(1)
         var success = true
         var message = ""
@@ -37,9 +37,7 @@ class AndroidAuthClientTest {
 
     @Test
     fun loginToUnreachableHostReportsFailure() {
-        // 10.255.255.1 is non-routable; the real HTTP client fails within the
-        // configured timeout, exercising the whole pipeline end to end.
-        val client = AndroidAuthClient(host = "10.255.255.1")
+        val client = AndroidAuthClient(context, host = "10.255.255.1")
         val latch = CountDownLatch(1)
         var success = true
         client.login("a@b.com", "pw") { s, _ ->

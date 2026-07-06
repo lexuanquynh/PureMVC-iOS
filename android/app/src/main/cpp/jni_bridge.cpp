@@ -18,6 +18,8 @@
 #include "Infrastructure/Http/HttpClientConfig.hpp"
 #include "Infrastructure/Http/HttplibHttpClient.hpp"
 #include "Infrastructure/Concurrency/ThreadExecutor.hpp"
+#include "Infrastructure/Security/ISecureStorage.hpp"
+#include "Infrastructure/Security/SecureTokenStore.hpp"
 
 using namespace core;
 
@@ -33,7 +35,21 @@ std::string jstringToStd(JNIEnv* env, jstring s) {
     return out;
 }
 
-// In-memory token store (Android Keystore adapter is a later slice).
+// RAII: a JNIEnv for the current thread, attaching to the JVM if needed.
+struct ScopedEnv {
+    JNIEnv* env = nullptr;
+    bool attached = false;
+    ScopedEnv() {
+        if (g_vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) == JNI_EDETACHED) {
+            g_vm->AttachCurrentThread(&env, nullptr);
+            attached = true;
+        }
+    }
+    ~ScopedEnv() { if (attached) g_vm->DetachCurrentThread(); }
+    JNIEnv* operator->() const { return env; }
+};
+
+// In-memory token store, used only by the PureMVCCore smoke.
 class InMemoryTokenStore : public ITokenStore {
 public:
     Token load() override { return token_; }
@@ -41,6 +57,57 @@ public:
     void clear() override { token_ = Token{}; }
 private:
     Token token_;
+};
+
+// ISecureStorage backed by a Kotlin SecureStorage object (EncryptedSharedPreferences
+// over the Android Keystore). Calls up into the JVM via JNI.
+class JniSecureStorage : public ISecureStorage {
+public:
+    JniSecureStorage(JNIEnv* env, jobject storage) {
+        obj_ = env->NewGlobalRef(storage);
+        jclass cls = env->GetObjectClass(storage);
+        getM_ = env->GetMethodID(cls, "get", "(Ljava/lang/String;)Ljava/lang/String;");
+        setM_ = env->GetMethodID(cls, "set", "(Ljava/lang/String;Ljava/lang/String;)V");
+        removeM_ = env->GetMethodID(cls, "remove", "(Ljava/lang/String;)V");
+        env->DeleteLocalRef(cls);
+    }
+    ~JniSecureStorage() override {
+        ScopedEnv env;
+        env->DeleteGlobalRef(obj_);
+    }
+
+    bool get(const std::string& key, std::string& out) override {
+        ScopedEnv env;
+        jstring jk = env->NewStringUTF(key.c_str());
+        auto jv = static_cast<jstring>(env->CallObjectMethod(obj_, getM_, jk));
+        env->DeleteLocalRef(jk);
+        if (jv == nullptr) return false;
+        out = jstringToStd(env.env, jv);
+        env->DeleteLocalRef(jv);
+        return true;
+    }
+    bool set(const std::string& key, const std::string& value) override {
+        ScopedEnv env;
+        jstring jk = env->NewStringUTF(key.c_str());
+        jstring jv = env->NewStringUTF(value.c_str());
+        env->CallVoidMethod(obj_, setM_, jk, jv);
+        env->DeleteLocalRef(jk);
+        env->DeleteLocalRef(jv);
+        return true;
+    }
+    bool remove(const std::string& key) override {
+        ScopedEnv env;
+        jstring jk = env->NewStringUTF(key.c_str());
+        env->CallVoidMethod(obj_, removeM_, jk);
+        env->DeleteLocalRef(jk);
+        return true;
+    }
+
+private:
+    jobject obj_ = nullptr;
+    jmethodID getM_ = nullptr;
+    jmethodID setM_ = nullptr;
+    jmethodID removeM_ = nullptr;
 };
 
 HttpClientConfig makeConfig(const std::string& host, int port) {
@@ -55,27 +122,28 @@ HttpClientConfig makeConfig(const std::string& host, int port) {
     return config;
 }
 
-// Native object graph mirroring iOS PMVCAuthClient (real HTTPS via httplib).
+// Native object graph mirroring iOS PMVCAuthClient (real HTTPS via httplib,
+// Keychain-equivalent token storage via the Android Keystore).
 struct AndroidAuthClient {
     ThreadExecutor executor;
     HttplibHttpClient http;
-    AuthRepository repository{http, "/api/v1/auth/login"};
-    InMemoryTokenStore store;
-    LoginUseCase login{repository, store};
+    AuthRepository repository;
+    JniSecureStorage storage;
+    SecureTokenStore store;
+    LoginUseCase login;
 
-    AndroidAuthClient(const std::string& host, int port)
-        : http(makeConfig(host, port), executor) {}
+    AndroidAuthClient(const std::string& host, int port, JNIEnv* env, jobject storageObj)
+        : http(makeConfig(host, port), executor),
+          repository(http, "/api/v1/auth/login"),
+          storage(env, storageObj),
+          store(storage),
+          login(repository, store) {}
 };
 
 // Calls back into a Kotlin AuthCallback (onResult(Boolean, String)) from an
 // arbitrary native thread.
 void invokeCallback(jobject callbackGlobal, bool success, const std::string& message) {
-    JNIEnv* env = nullptr;
-    bool attached = false;
-    if (g_vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) == JNI_EDETACHED) {
-        g_vm->AttachCurrentThread(&env, nullptr);
-        attached = true;
-    }
+    ScopedEnv env;
     jclass cls = env->GetObjectClass(callbackGlobal);
     jmethodID method = env->GetMethodID(cls, "onResult", "(ZLjava/lang/String;)V");
     jstring jmsg = env->NewStringUTF(message.c_str());
@@ -83,9 +151,6 @@ void invokeCallback(jobject callbackGlobal, bool success, const std::string& mes
     env->DeleteLocalRef(jmsg);
     env->DeleteLocalRef(cls);
     env->DeleteGlobalRef(callbackGlobal);
-    if (attached) {
-        g_vm->DetachCurrentThread();
-    }
 }
 
 } // namespace
@@ -123,9 +188,9 @@ Java_com_codetoanbug_androidpuremvc_PureMVCCore_nativeLoginValidationMessage(
 
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_codetoanbug_androidpuremvc_AndroidAuthClient_nativeCreate(
-        JNIEnv* env, jobject /*thiz*/, jstring host, jint port) {
+        JNIEnv* env, jobject /*thiz*/, jstring host, jint port, jobject storage) {
     return reinterpret_cast<jlong>(
-        new AndroidAuthClient(jstringToStd(env, host), static_cast<int>(port)));
+        new AndroidAuthClient(jstringToStd(env, host), static_cast<int>(port), env, storage));
 }
 
 extern "C" JNIEXPORT void JNICALL
