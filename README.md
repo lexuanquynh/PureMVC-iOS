@@ -1,93 +1,98 @@
 # PureMVC-iOS
 
-Ứng dụng iOS demo với **logic nghiệp vụ chạy trên PureMVC C++ multicore framework**
-thay vì Swift. Tầng Swift/UIKit chỉ là lớp vỏ mỏng; phần MVC thật
-(Model / Command / Notification) nằm ở C++ và Objective-C++, expose sang Swift
-qua một lớp bridging wrapper. Luồng mẫu: đăng nhập / đăng xuất / refresh dữ liệu
-với một REST backend.
+Ứng dụng demo với **business logic viết một lần bằng C++** (trên PureMVC multicore
+framework + Clean Architecture) và **chạy chung cho cả iOS lẫn Android**. Mỗi nền
+tảng chỉ thêm UI + một lớp bridge mỏng + một adapter secure-storage; phần
+logic / network / TLS pinning / token store dùng lại nguyên.
 
-Mục tiêu dài hạn: làm **base tái sử dụng** cho nhiều dự án yêu cầu hiệu năng cao
-và bảo mật tốt — core C++ độc lập nền tảng, test được không cần simulator, UI dựng
-bằng [Texture / AsyncDisplayKit](https://github.com/texturegroup/texture).
+Test một lần trên host (không cần simulator), consume qua Swift Package (iOS) và
+NDK/JNI (Android). CI kiểm cả ba build surface trên mỗi PR.
 
 ## Kiến trúc
 
 ```
-Swift + UIKit (ViewController, AppDelegate)      ← lớp vỏ mỏng
-        │  delegate / callback
-PureMVCWrapper (Objective-C++)                    ← ranh giới Swift ↔ C++ duy nhất
-        │  Facade.sendNotification(...)
-PureMVC C++ (Command / Proxy / Notification)      ← logic nghiệp vụ
-        │
-Network (NetworkManager over httplib + json)      ← HTTP bất đồng bộ
+        iOS (Swift / UIKit)                 Android (Kotlin / Compose)
+        PureMVCBridge (ObjC++)              AndroidAuthClient (JNI)
+                └──────────── SHARED C++ Core ────────────┘
+        LoginUseCase → AuthRepository → HttplibHttpClient (TLS + SPKI pinning)
+                                      → SecureTokenStore
+        KeychainSecureStore  ⟷  ISecureStorage  ⟷  JniSecureStorage → Keystore
 ```
 
-- **`PureMVC/`** — app iOS: Swift UI, wrapper ObjC++, Command/Proxy/Constants,
-  tầng Network (`httplib` + nlohmann `json`), và framework vendored trong `Libs/`.
-- **`Core/`** — module **C++ headless** (Clean Architecture) đang được xây dựng:
-  domain thuần, không phụ thuộc iOS/Objective-C, unit-test trên host trong
-  mili-giây. Xem [`Core/README.md`](Core/README.md).
+Ports (`IHttpClient` / `IExecutor` / `ISecureStorage`) là "đường may" đa nền tảng:
+cùng một C++ chạy trên cả hai, chỉ adapter sau port là khác nhau.
 
-Chi tiết kiến trúc, quy ước, và các điểm dễ vướng: xem [`CLAUDE.md`](CLAUDE.md).
+## Bố cục repo
 
-## Yêu cầu
+| Đường dẫn | Nội dung |
+|---|---|
+| `Core/` | **C++ Core** headless (Domain + Infrastructure) + unit test (CMake/GoogleTest). Xem [`Core/README.md`](Core/README.md) |
+| `Bridge/` | ObjC++ bridge cho iOS (`PMVCAuthClient`, `KeychainSecureStore`) |
+| `Package.swift` | Swift Package (`PureMVCCoreCxx` + `PureMVCBridge`) để iOS consume |
+| `PureMVC.xcodeproj`, `PureMVC/` | App iOS (Swift/UIKit + PureMVC facade) |
+| `android/` | App Android (Kotlin/Compose) + JNI bridge + OpenSSL build. Xem [`android/README.md`](android/README.md) |
+| `docs/` | [`cross-platform-core.md`](docs/cross-platform-core.md) (ADR), [`ios-integration-plan.md`](docs/ios-integration-plan.md) |
 
-- Xcode (chạy trên **iOS Simulator** — app biên dịch stack HTTP C++ và link static
-  lib theo từng kiến trúc từ `PureMVC.xcframework`)
-- CMake ≥ 3.14 (để build/test module `Core` trên host)
+Chi tiết kiến trúc + quy ước: [`CLAUDE.md`](CLAUDE.md).
 
-## Build & chạy app iOS
+## Build & test
 
-Mở `PureMVC.xcodeproj` trong Xcode, chọn một simulator rồi Run. Hoặc dùng CLI:
-
-```sh
-xcodebuild -project PureMVC.xcodeproj -scheme PureMVC \
-  -destination 'platform=iOS Simulator,name=iPhone 15' build
-
-# chạy test
-xcodebuild -project PureMVC.xcodeproj -scheme PureMVC \
-  -destination 'platform=iOS Simulator,name=iPhone 15' test
-```
-
-### Build settings bắt buộc (đã cấu hình sẵn — giữ nguyên khi sửa project)
-
-Nếu thêm target C++/ObjC++ mới hoặc mất cấu hình, khôi phục:
-
-- `CLANG_CXX_LANGUAGE_STANDARD = gnu++0x` (C++11), thêm `-std=c++11` vào `OTHER_CPLUSPLUSFLAGS`
-- `HEADER_SEARCH_PATHS = $(PROJECT_DIR)/PureMVC/Libs/include/**`
-- `SWIFT_OBJC_BRIDGING_HEADER = PureMVC/PureMVC-Bridging-Header.h`
-
-## Build & test module Core (C++, trên host)
-
+### Core (C++, trên host — nhanh nhất)
 ```sh
 cd Core
 cmake -S . -B build
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```
+GoogleTest + cpp-httplib tải qua `FetchContent` (nlohmann/json vendored trong
+`Core/ThirdParty/`). Test **không cần simulator, không cần mạng** khi chạy.
 
-GoogleTest được tải tự động qua CMake `FetchContent` (cần mạng lần cấu hình đầu).
-Test core **không cần simulator, không cần mạng** khi chạy.
+### iOS
+Mở `PureMVC.xcodeproj` trong Xcode rồi Run, hoặc:
+```sh
+# Package (C++ core + ObjC++ bridge + Swift interop)
+swift build && swift test
+
+# App — dùng simulator arm64 (xcframework/OpenSSL chỉ có slice arm64-simulator)
+xcodebuild -project PureMVC.xcodeproj -scheme PureMVC \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build
+```
+OpenSSL cho iOS đến từ SPM (`krzyzanowskim/OpenSSL-Package`).
+
+### Android
+```sh
+cd android
+# httplib cần OpenSSL >= 3.0; Google prefab chỉ có 1.1.1 nên build 3.x cho NDK một lần:
+bash openssl/build-openssl.sh
+./gradlew :app:assembleDebug
+# test trên emulator/device:
+./gradlew :app:connectedDebugAndroidTest
+```
+
+## CI
+
+`.github/workflows/ci.yml` chạy trên mỗi PR: **Core** (`ctest`) · **iOS**
+(`swift build`/`test`) · **Android** (`build-openssl.sh` + `assembleDebug`).
 
 ## Thư viện PureMVC (vendored)
 
-`PureMVC.xcframework` và các header trong `PureMVC/Libs/` được build riêng từ
-framework gốc — coi như read-only:
-
-- Nguồn: https://github.com/lexuanquynh/puremvc-cpp-multicore-framework
-- Tải về và làm theo `build-ios.md` trong repo đó để tạo lại xcframework.
+`PureMVC.xcframework` + header trong `PureMVC/Libs/` build riêng từ framework gốc,
+coi như read-only. Nguồn:
+https://github.com/lexuanquynh/puremvc-cpp-multicore-framework (đọc `build-ios.md`).
 
 ## Quy trình đóng góp
 
-Xem mục **Contribution workflow** trong [`CLAUDE.md`](CLAUDE.md): mỗi task tạo
-GitHub issue → làm trên branch → test xanh → mở pull request → merge sau khi được
-duyệt. Không push thẳng vào `main`.
+Xem **Contribution workflow** trong [`CLAUDE.md`](CLAUDE.md): mỗi task tạo issue →
+làm trên branch → test xanh → mở PR → merge sau khi được duyệt. Không push thẳng
+vào `main`.
 
 ## Lộ trình
 
-- [x] Core C++ headless + CMake/GoogleTest (LoginUseCase)
-- [ ] Tách `IHttpClient` / `IExecutor`, `AuthRepository` test được bằng mock
-- [ ] `KeychainTokenStore` + bật SSL verify + certificate pinning
-- [ ] Nối `LoginCommand` / `UserProxy` gọi vào use case
-- [ ] UI bằng Texture (AsyncDisplayKit) + snapshot test
-- [ ] CI (cmake/ctest + xcodebuild test)
+- [x] Core C++ Clean Architecture (LoginUseCase, AuthRepository, HttplibHttpClient, SecureTokenStore, CertificatePinner)
+- [x] Đóng gói Swift Package + tích hợp app iOS; gỡ path `verifySSL=false` cũ
+- [x] TLS verify + SPKI certificate pinning (dùng chung)
+- [x] Chia sẻ Core sang Android (NDK/JNI): HTTPS thật + Keystore secure storage
+- [x] CI cho host / iOS / Android
+- [ ] Build PureMVC framework từ source cho NDK (nếu dùng Command/Proxy phía Android)
+- [ ] Trỏ backend thật + thêm SPKI pins; Android instrumented tests vào CI
+- [ ] UI iOS bằng Texture (AsyncDisplayKit)
