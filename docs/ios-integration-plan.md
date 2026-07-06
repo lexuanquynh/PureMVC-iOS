@@ -104,12 +104,18 @@ clean. `logout()` clears via `SecureTokenStore::clear()`.
 **Verification:** run on simulator, tap login, observe the same notifications as
 today (success + failure). Keep `NetworkManager` in place until Slice 3.
 
-## Slice 3 — remove the legacy insecure path + enable pinning
+## Slice 3 — remove the legacy insecure path + enable pinning ✅ (mostly done)
 
-- Delete the `NetworkManager` / `UserTokenProvider` login usage from `UserProxy`
-  (or the whole files if nothing else uses them), removing `verifySSL = false` and
-  the hard-coded, inconsistent base URLs.
-- Add real SPKI pins to `config.pinnedSpkiSha256Base64`. Obtain a pin with:
+Done: deleted `NetworkManager`, `UserProxy`, `UserTokenProvider`, and the
+`http_errors` / `string_helper` / `StringHelper` helpers (the whole
+`PureMVC/Model`, `PureMVC/Network`, `PureMVC/Helper` dirs), removing the
+`verifySSL = false` path. Login **and** logout now go through the Core-backed
+`PMVCAuthClient` via a single shared instance (`Command/AppAuthClient.{h,mm}`);
+logout clears the Keychain. App builds for the arm64 simulator; `swift build` /
+`ctest` green.
+
+Remaining (needs a real backend): add SPKI pins in `AppAuthClient.mm` and verify
+on device. Obtain a pin with:
   ```sh
   openssl s_client -connect HOST:443 -servername HOST </dev/null 2>/dev/null \
     | openssl x509 -pubkey -noout \

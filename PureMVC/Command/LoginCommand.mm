@@ -11,23 +11,10 @@
 //
 
 #import <Foundation/Foundation.h>
-#import <PureMVCBridge/PMVCAuthClient.h>
 
 #include "LoginCommand.h"
 #include "PureMVC/Patterns/Facade/Facade.hpp"
-
-// Shared, process-lifetime auth client. Host is a placeholder for the demo; add
-// real SPKI pins here (pinnedSPKIHashes) when pointing at a real backend.
-static PMVCAuthClient *SharedAuthClient() {
-    static PMVCAuthClient *client = nil;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        client = [[PMVCAuthClient alloc] initWithHost:@"sample.com"
-                                                 port:443
-                                     pinnedSPKIHashes:nil];
-    });
-    return client;
-}
+#import "AppAuthClient.h"
 
 void LoginCommand::execute(INotification const& notification) {
     NSLog(@"LoginCommand::execute called");
@@ -41,7 +28,7 @@ void LoginCommand::execute(INotification const& notification) {
 
     IFacade *facadePtr = &getFacade();
 
-    [SharedAuthClient() loginWithEmail:(username ?: @"")
+    [AppSharedAuthClient() loginWithEmail:(username ?: @"")
                              password:(password ?: @"")
                            completion:^(BOOL success, NSString *_Nullable message) {
         // PMVCAuthClient always delivers on the main queue.

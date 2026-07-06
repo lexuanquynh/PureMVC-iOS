@@ -51,15 +51,13 @@ The layers, from UI down to the network:
 
 2. **`PureMVCWrapper`** (`Wrapper/PureMVCWrapper.{h,mm}`) — the single Objective-C++ boundary between Swift and C++. `.h` is pure Objective-C (safe for the Swift bridging header); `.mm` includes the C++ framework. Responsibilities:
    - Singleton (`sharedInstance`).
-   - `initializeFacade` wires the whole PureMVC graph: registers `UserProxy`, registers commands (`LoginCommand`, `LogoutCommand`, `DataRefreshCommand`) against notification names, and registers `WrapperObserver`s.
+   - `initializeFacade` wires the PureMVC graph: registers commands (`LoginCommand`, `LogoutCommand`, `DataRefreshCommand`) against notification names, and registers `WrapperObserver`s.
    - Converts Swift calls into `facade.sendNotification(...)`, passing bodies as `NSDictionary` bridged to `void*`.
    - `WrapperObserver` (a C++ `IObserver`) receives C++ notifications and calls back into Swift via the `PureMVCDelegate` protocol, **always dispatched to the main queue**.
 
-3. **Commands** (`Command/`) — C++ `SimpleCommand` subclasses run by the PureMVC controller when a notification fires. `LoginCommand` unbridges the `NSDictionary` body, retrieves `UserProxy` from the facade, and calls its async `login`; on the callback it sends `LOGIN_SUCCESS` / `LOGIN_FAILED` notifications (with an error body) back through the facade. `LogoutCommand` and `DataRefreshCommand` are defined inline in `PureMVCWrapper.mm`.
+3. **Commands** (`Command/`) — C++ `SimpleCommand` subclasses run by the PureMVC controller when a notification fires. `LoginCommand` unbridges the `NSDictionary` body and calls `AppSharedAuthClient()` (`Command/AppAuthClient.{h,mm}` — a shared `PMVCAuthClient`); on the completion (main queue) it sends `LOGIN_SUCCESS` / `LOGIN_FAILED`. `LogoutCommand` (inline in `PureMVCWrapper.mm`) calls the same client's `logout` (clears the Keychain) then sends `LOGOUT_SUCCESS`. `DataRefreshCommand` is a stub.
 
-4. **Model** (`Model/UserProxy.{h,cpp}`) — a PureMVC `Proxy` holding session/user state and owning the `NetworkManager` + `UserTokenProvider`. This is where the backend base URL and network config live.
-
-5. **Network** (`Network/`) — `NetworkManager` is a self-contained async HTTP client over `httplib` (`Libs/httplib.h`) + nlohmann `json` (`Libs/json/json.hpp`). Each request runs on a detached `std::thread`; retry, SSL config, header merging, and token injection are handled here. `UserTokenProvider` (`Network/Provider/user_token_provider.h`) supplies the bearer token and implements `refreshAccessToken` for automatic 401/403 retry.
+4. **Auth / networking = the `Core` Swift Package** — login/logout/token storage live in the reusable headless C++ package (see `Core/README.md`), consumed via the `PureMVCBridge` product. `PMVCAuthClient` composes `HttplibHttpClient` (TLS verification + SPKI pinning, OpenSSL via SPM) + `AuthRepository` + `LoginUseCase` + a Keychain-backed `SecureTokenStore`. The old in-app `NetworkManager` / `UserProxy` / `UserTokenProvider` (which used `verifySSL=false`) have been removed. `PureMVC/Model`, `PureMVC/Network`, `PureMVC/Helper` no longer exist.
 
 ### Notification names — keep three places in sync
 The notification/command string constants are the contract across the whole stack:
@@ -72,11 +70,11 @@ Adding or renaming a notification means editing all three. Commands are wired to
 ## Conventions & gotchas
 
 - **`.h` vs `.mm`**: any header reachable from the Swift bridging header (`PureMVCWrapper.h`, `PureMVCConstantsWrapper.h`) must stay pure Objective-C / C — no C++ includes. C++ belongs in `.mm`/`.cpp` and in headers only included from those.
-- **Threading**: network callbacks arrive on background threads; anything touching UIKit or the `PureMVCDelegate` must `dispatch_async(dispatch_get_main_queue(), ...)` (see `WrapperObserver` and `LoginCommand`).
-- **String bridging**: use the helpers rather than raw `stringWithUTF8String:` — `safeStdStringFromNSString` / `safeStringFromStdString` in `Helper/StringHelper.h` (ObjC++ only) guard against nil/invalid UTF-8. `Helper/string_helper.h` is pure C++ (`parseErrorMessage` for backend error bodies).
-- **Memory**: C++ objects created in `initializeFacade` (proxies, commands, observers) are `new`ed and owned by the facade/static storage; observers are cleaned up in `PureMVCWrapper.dealloc`. Bodies passed as `(__bridge void*)` must outlive the async call — see the `[username copy]` pattern in `LoginCommand`.
-- **`Libs/`** (`PureMVC.xcframework`, `httplib.h`, `json.hpp`) is vendored third-party code — treat as read-only; the framework is built separately (see `README.md`).
+- **Threading**: async callbacks arrive on background threads; anything touching UIKit or the `PureMVCDelegate` must be on the main queue (`PMVCAuthClient` already delivers its completion there; see also `WrapperObserver`).
+- **Memory**: C++ objects created in `initializeFacade` (commands, observers) are `new`ed and owned by static storage; observers are cleaned up in `PureMVCWrapper.dealloc`. Bodies passed as `(__bridge void*)` must outlive the (synchronous) `sendNotification` call.
+- **`Libs/`** (`PureMVC.xcframework`, `httplib.h`, `json.hpp`) is vendored third-party code — treat as read-only; the framework is built separately (see `README.md`). Note the `Core` package vendors its own copies of httplib/json under `Core/ThirdParty/`.
+- **OpenSSL** comes from the `krzyzanowskim/OpenSSL-Package` SPM dependency (used by the app target and the `Core` package). The simulator has only an `arm64` framework slice, so build/run on an **arm64 simulator** (Apple Silicon), not `x86_64`.
 
 ## Backend
 
-The demo points `UserProxy`/`UserTokenProvider` at a hosted API (`/api/v1/auth/login`, `/api/v1/auth/refresh`). Base URLs and SSL/verify flags are hard-coded in `UserProxy.cpp` and `user_token_provider.h`; change them there.
+`PMVCAuthClient` targets a host configured in `Command/AppAuthClient.mm` (`initWithHost:port:pinnedSPKIHashes:`, currently a placeholder). The login path is `/api/v1/auth/login` (set in `Core`'s `AuthRepository`). Add real SPKI pins in `AppAuthClient.mm` when pointing at a real backend.
