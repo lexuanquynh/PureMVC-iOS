@@ -17,10 +17,16 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 OUT="$HERE/prebuilt"
 WORK="$(mktemp -d)"
 
-# NDK prebuilt toolchain (host tag).
-TC="$NDK/toolchains/llvm/prebuilt/darwin-x86_64"
-if [ ! -d "$TC" ]; then
-    TC="$(dirname "$(dirname "$(find "$NDK/toolchains/llvm/prebuilt" -maxdepth 2 -name 'clang' | head -1)")")"
+# NDK prebuilt toolchain (host tag: darwin-arm64 / darwin-x86_64 / linux-x86_64).
+TC=""
+for tag in darwin-arm64 darwin-x86_64 linux-x86_64 windows-x86_64; do
+    if [ -d "$NDK/toolchains/llvm/prebuilt/$tag" ]; then
+        TC="$NDK/toolchains/llvm/prebuilt/$tag"
+        break
+    fi
+done
+if [ -z "$TC" ]; then
+    TC="$NDK/toolchains/llvm/prebuilt/$(ls "$NDK/toolchains/llvm/prebuilt" | head -1)"
 fi
 export PATH="$TC/bin:$PATH"
 export ANDROID_NDK_ROOT="$NDK"
