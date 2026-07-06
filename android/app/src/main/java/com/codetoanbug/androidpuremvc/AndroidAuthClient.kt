@@ -13,8 +13,8 @@ fun interface AuthCallback {
  * handle; the native callback fires on a worker thread, so results are posted to
  * the main thread before reaching [AuthCallback].
  */
-class AndroidAuthClient : AutoCloseable {
-    private val handle: Long = nativeCreate()
+class AndroidAuthClient(host: String, port: Int = 443) : AutoCloseable {
+    private val handle: Long = nativeCreate(host, port)
     private val main = Handler(Looper.getMainLooper())
 
     fun login(email: String, password: String, callback: AuthCallback) {
@@ -29,7 +29,7 @@ class AndroidAuthClient : AutoCloseable {
 
     override fun close() = nativeDestroy(handle)
 
-    private external fun nativeCreate(): Long
+    private external fun nativeCreate(host: String, port: Int): Long
     private external fun nativeLogin(handle: Long, email: String, password: String, callback: AuthCallback)
     private external fun nativeLogout(handle: Long)
     private external fun nativeCurrentAccessToken(handle: Long): String?
