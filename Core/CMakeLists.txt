@@ -42,6 +42,11 @@ if(PUREMVC_CORE_WITH_HTTPLIB)
         target_link_libraries(puremvc_core PRIVATE ${PUREMVC_OPENSSL_TARGETS})
     else()
         # Host: cpp-httplib via FetchContent brings its own OpenSSL detection.
+        # We don't need compression; disabling the optional deps keeps configure
+        # portable (e.g. Linux CI without zstd/brotli).
+        set(HTTPLIB_USE_ZLIB_IF_AVAILABLE   OFF CACHE BOOL "" FORCE)
+        set(HTTPLIB_USE_ZSTD_IF_AVAILABLE   OFF CACHE BOOL "" FORCE)
+        set(HTTPLIB_USE_BROTLI_IF_AVAILABLE OFF CACHE BOOL "" FORCE)
         include(FetchContent)
         FetchContent_Declare(
             httplib

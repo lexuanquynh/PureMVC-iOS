@@ -11,6 +11,10 @@ android {
         }
     }
 
+    // Pinned so the OpenSSL built by android/openssl/build-openssl.sh matches the
+    // NDK Gradle links with (see CI).
+    ndkVersion = "29.0.13599879"
+
     defaultConfig {
         applicationId = "com.codetoanbug.androidpuremvc"
         minSdk = 24
