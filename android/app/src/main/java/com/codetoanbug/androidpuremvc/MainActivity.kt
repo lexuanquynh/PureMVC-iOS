@@ -46,7 +46,9 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun LoginScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    val client = remember { AndroidAuthClient(context = context, host = "sample.com") }
+    // Demo uses mock data so login succeeds offline. For a real backend drop
+    // `mock` and pass a real host.
+    val client = remember { AndroidAuthClient(context = context, host = "mock", mock = true) }
     DisposableEffect(Unit) { onDispose { client.close() } }
 
     var email by remember { mutableStateOf("sample@gmail.com") }

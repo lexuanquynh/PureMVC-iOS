@@ -9,7 +9,9 @@
 
 #include "KeychainSecureStore.hpp"
 #include "Infrastructure/Http/HttpClientConfig.hpp"
+#include "Infrastructure/Http/IHttpClient.hpp"
 #include "Infrastructure/Http/HttplibHttpClient.hpp"
+#include "Infrastructure/Http/MockHttpClient.hpp"
 #include "Infrastructure/Concurrency/ThreadExecutor.hpp"
 #include "Infrastructure/Auth/AuthRepository.hpp"
 #include "Infrastructure/Security/SecureTokenStore.hpp"
@@ -36,7 +38,7 @@ NSString *toNS(const std::string &s) {
     // Declaration order == construction order; ARC destroys C++ ivars in reverse,
     // which keeps every reference valid (login → store/repo → keychain/client → executor).
     std::unique_ptr<core::ThreadExecutor> _executor;
-    std::unique_ptr<core::HttplibHttpClient> _client;
+    std::unique_ptr<core::IHttpClient> _client;
     std::unique_ptr<core::AuthRepository> _repository;
     std::unique_ptr<core::KeychainSecureStore> _keychain;
     std::unique_ptr<core::SecureTokenStore> _store;
@@ -57,18 +59,32 @@ NSString *toNS(const std::string &s) {
         }
 
         _executor = std::unique_ptr<core::ThreadExecutor>(new core::ThreadExecutor());
-        _client = std::unique_ptr<core::HttplibHttpClient>(
+        _client = std::unique_ptr<core::IHttpClient>(
             new core::HttplibHttpClient(config, *_executor));
-        _repository = std::unique_ptr<core::AuthRepository>(
-            new core::AuthRepository(*_client, "/api/v1/auth/login"));
-        _keychain = std::unique_ptr<core::KeychainSecureStore>(
-            new core::KeychainSecureStore("com.puremvc.auth"));
-        _store = std::unique_ptr<core::SecureTokenStore>(
-            new core::SecureTokenStore(*_keychain));
-        _login = std::unique_ptr<core::LoginUseCase>(
-            new core::LoginUseCase(*_repository, *_store));
+        [self finishSetup];
     }
     return self;
+}
+
+- (instancetype)initWithMockData {
+    if (self = [super init]) {
+        _executor = std::unique_ptr<core::ThreadExecutor>(new core::ThreadExecutor());
+        _client = std::unique_ptr<core::IHttpClient>(new core::MockHttpClient(*_executor));
+        [self finishSetup];
+    }
+    return self;
+}
+
+// Builds the repository → token store → use case graph over the chosen client.
+- (void)finishSetup {
+    _repository = std::unique_ptr<core::AuthRepository>(
+        new core::AuthRepository(*_client, "/api/v1/auth/login"));
+    _keychain = std::unique_ptr<core::KeychainSecureStore>(
+        new core::KeychainSecureStore("com.puremvc.auth"));
+    _store = std::unique_ptr<core::SecureTokenStore>(
+        new core::SecureTokenStore(*_keychain));
+    _login = std::unique_ptr<core::LoginUseCase>(
+        new core::LoginUseCase(*_repository, *_store));
 }
 
 - (void)loginWithEmail:(NSString *)email

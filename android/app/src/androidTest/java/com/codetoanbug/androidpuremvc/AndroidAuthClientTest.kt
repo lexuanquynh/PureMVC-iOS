@@ -36,6 +36,24 @@ class AndroidAuthClientTest {
     }
 
     @Test
+    fun mockLoginSucceedsAndStoresToken() {
+        val client = AndroidAuthClient(context, host = "mock", mock = true)
+        client.logout()
+        val latch = CountDownLatch(1)
+        var success = false
+        var message = ""
+        client.login("a@b.com", "pw") { s, m ->
+            success = s; message = m; latch.countDown()
+        }
+        assertTrue(latch.await(5, TimeUnit.SECONDS))
+        assertTrue(success)
+        assertEquals("Login successful", message)
+        assertEquals("mock-access-token", client.currentAccessToken())
+        client.logout()
+        client.close()
+    }
+
+    @Test
     fun loginToUnreachableHostReportsFailure() {
         val client = AndroidAuthClient(context, host = "10.255.255.1")
         val latch = CountDownLatch(1)

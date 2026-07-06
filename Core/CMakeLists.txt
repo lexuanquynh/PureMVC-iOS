@@ -81,6 +81,7 @@ if(PUREMVC_CORE_BUILD_TESTS)
         tests/Base64Tests.cpp
         tests/CertificatePinnerTests.cpp
         tests/HttpClientConfigTests.cpp
+        tests/MockHttpClientTests.cpp
     )
     if(PUREMVC_CORE_WITH_HTTPLIB)
         list(APPEND PUREMVC_TEST_SOURCES tests/HttplibHttpClientTests.cpp)
