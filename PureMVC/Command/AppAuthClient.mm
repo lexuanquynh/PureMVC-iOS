@@ -10,9 +10,9 @@ PMVCAuthClient *AppSharedAuthClient(void) {
     static PMVCAuthClient *client = nil;
     static dispatch_once_t once;
     dispatch_once(&once, ^{
-        client = [[PMVCAuthClient alloc] initWithHost:@"sample.com"
-                                                 port:443
-                                     pinnedSPKIHashes:nil];
+        // Demo uses mock data so login succeeds offline. For a real backend swap
+        // this for -initWithHost:port:pinnedSPKIHashes:.
+        client = [[PMVCAuthClient alloc] initWithMockData];
     });
     return client;
 }

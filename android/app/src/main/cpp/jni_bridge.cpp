@@ -16,7 +16,9 @@
 #include "Domain/Ports/ITokenStore.hpp"
 #include "Infrastructure/Auth/AuthRepository.hpp"
 #include "Infrastructure/Http/HttpClientConfig.hpp"
+#include "Infrastructure/Http/IHttpClient.hpp"
 #include "Infrastructure/Http/HttplibHttpClient.hpp"
+#include "Infrastructure/Http/MockHttpClient.hpp"
 #include "Infrastructure/Concurrency/ThreadExecutor.hpp"
 #include "Infrastructure/Security/ISecureStorage.hpp"
 #include "Infrastructure/Security/SecureTokenStore.hpp"
@@ -122,22 +124,28 @@ HttpClientConfig makeConfig(const std::string& host, int port) {
     return config;
 }
 
-// Native object graph mirroring iOS PMVCAuthClient (real HTTPS via httplib,
-// Keychain-equivalent token storage via the Android Keystore).
+// Native object graph mirroring iOS PMVCAuthClient (real HTTPS via httplib, or a
+// mock client for the offline demo; token storage via the Android Keystore).
 struct AndroidAuthClient {
     ThreadExecutor executor;
-    HttplibHttpClient http;
-    AuthRepository repository;
+    std::unique_ptr<IHttpClient> http;
+    std::unique_ptr<AuthRepository> repository;
     JniSecureStorage storage;
-    SecureTokenStore store;
-    LoginUseCase login;
+    std::unique_ptr<SecureTokenStore> store;
+    std::unique_ptr<LoginUseCase> login;
 
-    AndroidAuthClient(const std::string& host, int port, JNIEnv* env, jobject storageObj)
-        : http(makeConfig(host, port), executor),
-          repository(http, "/api/v1/auth/login"),
-          storage(env, storageObj),
-          store(storage),
-          login(repository, store) {}
+    AndroidAuthClient(const std::string& host, int port, bool mock,
+                      JNIEnv* env, jobject storageObj)
+        : storage(env, storageObj) {
+        if (mock) {
+            http.reset(new MockHttpClient(executor));
+        } else {
+            http.reset(new HttplibHttpClient(makeConfig(host, port), executor));
+        }
+        repository.reset(new AuthRepository(*http, "/api/v1/auth/login"));
+        store.reset(new SecureTokenStore(storage));
+        login.reset(new LoginUseCase(*repository, *store));
+    }
 };
 
 // Calls back into a Kotlin AuthCallback (onResult(Boolean, String)) from an
@@ -188,9 +196,10 @@ Java_com_codetoanbug_androidpuremvc_PureMVCCore_nativeLoginValidationMessage(
 
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_codetoanbug_androidpuremvc_AndroidAuthClient_nativeCreate(
-        JNIEnv* env, jobject /*thiz*/, jstring host, jint port, jobject storage) {
+        JNIEnv* env, jobject /*thiz*/, jstring host, jint port, jboolean mock, jobject storage) {
     return reinterpret_cast<jlong>(
-        new AndroidAuthClient(jstringToStd(env, host), static_cast<int>(port), env, storage));
+        new AndroidAuthClient(jstringToStd(env, host), static_cast<int>(port),
+                              mock == JNI_TRUE, env, storage));
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -205,7 +214,7 @@ Java_com_codetoanbug_androidpuremvc_AndroidAuthClient_nativeLogin(
         jobject callback) {
     auto* client = reinterpret_cast<AndroidAuthClient*>(handle);
     jobject callbackGlobal = env->NewGlobalRef(callback);
-    client->login.execute(
+    client->login->execute(
         LoginCredentials{jstringToStd(env, email), jstringToStd(env, password)},
         [callbackGlobal](bool success, const std::string& message) {
             invokeCallback(callbackGlobal, success, message);
@@ -215,13 +224,13 @@ Java_com_codetoanbug_androidpuremvc_AndroidAuthClient_nativeLogin(
 extern "C" JNIEXPORT void JNICALL
 Java_com_codetoanbug_androidpuremvc_AndroidAuthClient_nativeLogout(
         JNIEnv* /*env*/, jobject /*thiz*/, jlong handle) {
-    reinterpret_cast<AndroidAuthClient*>(handle)->store.clear();
+    reinterpret_cast<AndroidAuthClient*>(handle)->store->clear();
 }
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_codetoanbug_androidpuremvc_AndroidAuthClient_nativeCurrentAccessToken(
         JNIEnv* env, jobject /*thiz*/, jlong handle) {
-    Token token = reinterpret_cast<AndroidAuthClient*>(handle)->store.load();
+    Token token = reinterpret_cast<AndroidAuthClient*>(handle)->store->load();
     if (token.accessToken.empty()) return nullptr;
     return env->NewStringUTF(token.accessToken.c_str());
 }

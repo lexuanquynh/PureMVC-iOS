@@ -21,6 +21,11 @@ NS_ASSUME_NONNULL_BEGIN
                         port:(NSInteger)port
             pinnedSPKIHashes:(nullable NSArray<NSString *> *)pinnedSPKIHashes
     NS_DESIGNATED_INITIALIZER;
+
+/// Demo/offline mode: a mock HTTP client returns a canned successful login, so the
+/// full auth pipeline runs without a backend.
+- (instancetype)initWithMockData;
+
 - (instancetype)init NS_UNAVAILABLE;
 
 /// Performs login; `completion` is always invoked on the main queue.
