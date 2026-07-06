@@ -11,11 +11,11 @@
 #include "PureMVC/Interfaces/IObserver.hpp"
 #include "PureMVC/PureMVC.hpp"
 #include "PureMVCConstants.h"
-#include "UserProxy.h"
 #include "LoginCommand.h"
 #include <string>
 #include <vector>
 #import "PureMVCConstantsWrapper.h"
+#import "AppAuthClient.h"
 
 using namespace PureMVC;
 using namespace PureMVC::Core;
@@ -63,19 +63,10 @@ public:
     virtual void execute(INotification const& notification) override {
         NSLog(@"LogoutCommand::execute called");
         
-        IFacade& facade = getFacade();
-        try {
-            IProxy& baseProxy = facade.retrieveProxy(UserProxy::NAME);
-            UserProxy* userProxy = dynamic_cast<UserProxy*>(&baseProxy);
-            
-            if (userProxy) {
-                userProxy->logout();
-                facade.sendNotification(LOGOUT_SUCCESS);
-                NSLog(@"User logged out");
-            }
-        } catch (...) {
-            NSLog(@"Failed to retrieve UserProxy");
-        }
+        // Clears the Keychain-stored tokens via the Core-backed client.
+        [AppSharedAuthClient() logout];
+        getFacade().sendNotification(LOGOUT_SUCCESS);
+        NSLog(@"User logged out");
     }
 };
 
@@ -116,11 +107,7 @@ static std::vector<IObserver*> observers;
     
     // Get View instance for observer registration
     IView& view = View::getInstance(FACADE_NAME);
-    
-    // Register Proxy
-    UserProxy* userProxy = new UserProxy();
-    facade.registerProxy(userProxy);
-    
+
     // Create and register Observers
     WrapperObserver* loginSuccessObs = new WrapperObserver(self);
     WrapperObserver* loginFailedObs = new WrapperObserver(self);
