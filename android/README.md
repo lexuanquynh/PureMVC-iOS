@@ -49,5 +49,22 @@ android/
    Keystore + EncryptedSharedPreferences), the counterpart of iOS
    `KeychainSecureStore`.
 
-Nothing here is generated yet — this file is the guide for when the Android project
-is added.
+## Status
+
+**Slice 1 done** — the shared C++ Core builds into the app via the NDK:
+- `app/src/main/cpp/CMakeLists.txt` does `add_subdirectory(../Core)` with
+  `PUREMVC_CORE_WITH_HTTPLIB=OFF` (Domain + non-network Infrastructure; native
+  OpenSSL is a later slice) and links a JNI lib `puremvc_jni`.
+- `app/src/main/cpp/jni_bridge.cpp` + `PureMVCCore.kt` run the real
+  `LoginUseCase` validation across JNI (smoke).
+- `./gradlew :app:assembleDebug` builds `libpuremvc_jni.so` for `arm64-v8a` +
+  `x86_64` and packages it in the APK. Instrumented test in
+  `app/src/androidTest/.../PureMVCCoreTest.kt` (run with
+  `./gradlew :app:connectedDebugAndroidTest` on a device/emulator).
+
+### Next slices
+1. Native OpenSSL/BoringSSL for the NDK → flip `PUREMVC_CORE_WITH_HTTPLIB=ON`
+   (enables `HttplibHttpClient` + shared cert pinning); or an OkHttp `IHttpClient`.
+2. Build the PureMVC C++ framework from source for the NDK.
+3. JNI auth facade mirroring `PMVCAuthClient` + Kotlin wrapper.
+4. Android `ISecureStorage` (Keystore + EncryptedSharedPreferences).
