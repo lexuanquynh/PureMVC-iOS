@@ -62,9 +62,20 @@ android/
   `app/src/androidTest/.../PureMVCCoreTest.kt` (run with
   `./gradlew :app:connectedDebugAndroidTest` on a device/emulator).
 
+**Slice 2 done** — auth facade + Compose login:
+- `jni_bridge.cpp` `AndroidAuthClient` composes `ThreadExecutor` + a stub
+  `IHttpClient` (canned login, async) + `AuthRepository` + `LoginUseCase` +
+  in-memory token store; JNI create/login/logout/currentAccessToken/destroy with a
+  Kotlin callback (GlobalRef + AttachCurrentThread).
+- `AndroidAuthClient.kt` wrapper (posts results to the main thread) + Compose
+  `LoginScreen` in `MainActivity`.
+- Verified on emulator: `./gradlew :app:connectedDebugAndroidTest` — 6/6 pass,
+  incl. real login through the Core pipeline.
+- The stub `IHttpClient` is swapped for `HttplibHttpClient` once native OpenSSL
+  lands; the JNI/Kotlin API stays the same.
+
 ### Next slices
 1. Native OpenSSL/BoringSSL for the NDK → flip `PUREMVC_CORE_WITH_HTTPLIB=ON`
    (enables `HttplibHttpClient` + shared cert pinning); or an OkHttp `IHttpClient`.
 2. Build the PureMVC C++ framework from source for the NDK.
-3. JNI auth facade mirroring `PMVCAuthClient` + Kotlin wrapper.
-4. Android `ISecureStorage` (Keystore + EncryptedSharedPreferences).
+3. Android `ISecureStorage` (Keystore + EncryptedSharedPreferences).
