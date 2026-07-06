@@ -8,9 +8,59 @@ For any task that changes the repo, follow this sequence — **do not push strai
 
 1. **Create a GitHub issue** describing the task before starting work (`gh issue create`).
 2. **Work on a branch** — never commit directly to `main`.
-3. **Run the relevant tests and only continue once they pass** — C++ core: `ctest` in `Core/build`; iOS: `xcodebuild ... test`.
-4. **Open a pull request** (`gh pr create`) linked to the issue (`Closes #<n>`). Do **not** merge yet.
+3. **Run the relevant tests and only continue once they pass** (see the playbook below).
+4. **Open a pull request** (`gh pr create`) linked to the issue (`Closes #<n>`) and confirm **CI is green**. Do **not** merge yet.
 5. **Merge only after the maintainer's explicit approval.** Merging is a separate, approved step — never merge without an OK.
+
+### Add-a-feature playbook
+
+This repo is a **reusable cross-platform base**: business logic lives once in the C++
+`Core`; each platform adds only UI + a thin bridge + platform adapters. Add a feature
+in this order so it stays shared and testable.
+
+1. **Write the issue** — what changes, which layer, how it's verified. Branch off `main`.
+2. **Put logic in the shared C++ `Core`** (the default home for anything non-UI):
+   - New behavior → a use case in `Core/Domain/UseCases`, depending only on **ports**
+     (interfaces in `Core/Domain/Ports`). Keep it platform-free (no Obj-C/JNI/UIKit).
+   - Need the outside world (network, storage, clock…)? Depend on a **port**; put the
+     concrete impl in `Core/Infrastructure`. Add a new port if none fits.
+   - **Test on the host first** with fakes (`Core/tests/Mocks`) — the fast loop that
+     covers *both* platforms at once:
+     `cd Core && cmake -S . -B build && cmake --build build && ctest --test-dir build`
+3. **Expose it through each bridge** (only the surface the UI needs):
+   - iOS: a pure-Obj-C class in `Bridge/include/PureMVCBridge/` + its `.mm`
+     (see `PMVCAuthClient`). Keep public headers Obj-C so Swift imports them.
+   - Android: a JNI function in `android/app/src/main/cpp/jni_bridge.cpp` + a Kotlin
+     wrapper (see `AndroidAuthClient`). Marshal callbacks to the main thread.
+4. **Platform adapters** for any new port: iOS (`Bridge/`) and Android
+   (`android/.../cpp` + Kotlin). See `KeychainSecureStore` / `JniSecureStorage`.
+5. **Wire the UI**: iOS `PureMVC/` (Swift), Android `android/app/.../*.kt` (Compose).
+   Prefer **mock data** for demos (`MockHttpClient`) so flows run offline.
+6. **Verify the platforms you touched**:
+   - iOS: `swift build && swift test`; app: `xcodebuild -project PureMVC.xcodeproj
+     -scheme PureMVC -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build`
+     (use an **arm64** simulator — no x86_64 slice).
+   - Android: `cd android && ./gradlew :app:assembleDebug` (run
+     `openssl/build-openssl.sh` once first); runtime: `:app:connectedDebugAndroidTest`
+     on an emulator.
+7. **PR** linked to the issue; wait for **CI green** (host / iOS / Android) and approval; merge.
+
+### Cutting a release
+
+After a milestone is merged to `main` and CI is green:
+
+```sh
+git checkout main && git pull
+gh release create vX.Y.Z --title "vX.Y.Z" --generate-notes
+```
+
+Use semver; tag from `main` only. Downstream projects consume a tagged version.
+
+### Using this repo as a base for a new project
+
+Start from `main` (or a release tag): keep `Core/` + `Bridge/` + the JNI bridge; replace
+the demo use cases/UI with your own; point the clients at your backend
+(`AppAuthClient.mm` / `jni_bridge.cpp`) and add SPKI pins; keep the workflow above.
 
 ## What this is
 
